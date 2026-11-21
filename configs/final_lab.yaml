@@ -1,0 +1,63 @@
+category: final_lab
+display_name: Final Lab Report
+
+required_sections:
+  - abstract
+  - introduction
+  - theory
+  - apparatus
+  - methodology
+  - experimental_data
+  - error_analysis
+  - results_and_discussion
+  - conclusion
+  - references
+
+word_limits:
+  total: { min: 2000, max: 4500 }
+  sections:
+    abstract: { min: 100, max: 250 }
+    introduction: { min: 200, max: 500 }
+    theory: { min: 300, max: 700 }
+    apparatus: { min: 80, max: 250 }
+    methodology: { min: 250, max: 600 }
+    experimental_data: { min: 150, max: 500 }
+    error_analysis: { min: 150, max: 450 }
+    results_and_discussion: { min: 350, max: 900 }
+    conclusion: { min: 120, max: 300 }
+    references: { min: 30, max: 300 }
+
+formatting:
+  font: "Liberation Serif"
+  font_size: 11
+  line_spacing: 1.15
+  margins_inches: { top: 1.0, bottom: 1.0, left: 1.0, right: 1.0 }
+  citation_style: "IEEE"
+  heading_numbering: true
+
+prompts:
+  system: "ai/prompts/final_lab_system.txt"
+  generation: "ai/prompts/final_lab_generation.txt"
+  evaluation: "ai/prompts/final_lab_evaluation.txt"
+
+rubric:
+  - id: clarity
+    weight: 0.20
+    description: "Publication-grade academic prose and thorough explanations."
+  - id: accuracy
+    weight: 0.35
+    description: "Rigorous scientific analysis, correct mathematical modeling, and valid derivations."
+  - id: completeness
+    weight: 0.25
+    description: "Exhaustive coverage of theory, methodology, error analysis, and conclusions."
+  - id: formatting
+    weight: 0.20
+    description: "Flawless IEEE citations, tables, figure descriptions, and equations."
+
+rag:
+  enabled: false
+  collections: []
+
+references:
+  required: true
+  min_count: 4

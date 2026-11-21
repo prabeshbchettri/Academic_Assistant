@@ -1,0 +1,61 @@
+category: initial_lab
+display_name: Initial Lab Report
+
+required_sections:
+  - objective
+  - apparatus
+  - procedure
+  - observations
+  - calculations
+  - results
+  - discussion
+  - conclusion
+  - references
+
+word_limits:
+  total: { min: 1000, max: 2500 }
+  sections:
+    objective: { min: 80, max: 200 }
+    apparatus: { min: 50, max: 200 }
+    procedure: { min: 150, max: 450 }
+    observations: { min: 100, max: 400 }
+    calculations: { min: 100, max: 450 }
+    results: { min: 100, max: 350 }
+    discussion: { min: 200, max: 550 }
+    conclusion: { min: 80, max: 250 }
+    references: { min: 20, max: 200 }
+
+formatting:
+  font: "Liberation Serif"
+  font_size: 11
+  line_spacing: 1.15
+  margins_inches: { top: 1.0, bottom: 1.0, left: 1.0, right: 1.0 }
+  citation_style: "IEEE"
+  heading_numbering: true
+
+prompts:
+  system: "ai/prompts/initial_lab_system.txt"
+  generation: "ai/prompts/initial_lab_generation.txt"
+  evaluation: "ai/prompts/initial_lab_evaluation.txt"
+
+rubric:
+  - id: clarity
+    weight: 0.20
+    description: "Writing is clear and logically organized."
+  - id: accuracy
+    weight: 0.30
+    description: "Claims are consistent with supplied data, measurements, and references."
+  - id: completeness
+    weight: 0.30
+    description: "All required sections, steps, and observations are present."
+  - id: formatting
+    weight: 0.20
+    description: "Document follows required lab structure and IEEE citation style."
+
+rag:
+  enabled: false
+  collections: []
+
+references:
+  required: true
+  min_count: 3

@@ -1,0 +1,53 @@
+category: assignment
+display_name: Academic Assignment
+
+required_sections:
+  - introduction
+  - main_content
+  - analysis
+  - conclusion
+  - references
+
+word_limits:
+  total: { min: 800, max: 2000 }
+  sections:
+    introduction: { min: 100, max: 300 }
+    main_content: { min: 400, max: 1000 }
+    analysis: { min: 150, max: 400 }
+    conclusion: { min: 80, max: 250 }
+    references: { min: 10, max: 200 }
+
+formatting:
+  font: "Liberation Serif"
+  font_size: 11
+  line_spacing: 1.15
+  margins_inches: { top: 1.0, bottom: 1.0, left: 1.0, right: 1.0 }
+  citation_style: "IEEE"
+  heading_numbering: true
+
+prompts:
+  system: "ai/prompts/assignment_system.txt"
+  generation: "ai/prompts/assignment_generation.txt"
+  evaluation: "ai/prompts/assignment_evaluation.txt"
+
+rubric:
+  - id: clarity
+    weight: 0.25
+    description: "Clear, logical academic presentation and prose."
+  - id: accuracy
+    weight: 0.35
+    description: "Factual correctness and adherence to prompt instructions without hallucination."
+  - id: completeness
+    weight: 0.25
+    description: "All requested assignment questions and objectives are thoroughly answered."
+  - id: formatting
+    weight: 0.15
+    description: "Proper academic formatting, section hierarchy, and citations."
+
+rag:
+  enabled: false
+  collections: []
+
+references:
+  required: true
+  min_count: 2
