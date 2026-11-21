@@ -104,7 +104,8 @@ class SettingsPage(QWidget):
         new_pdf = self.pdf_engine_combo.currentText()
 
         # Update runtime settings
-        settings.gemini_api_key = new_key
+        from pydantic import SecretStr
+        settings.gemini_api_key = SecretStr(new_key)
         settings.gemini_model = new_model
         settings.pdf_engine = new_pdf
 

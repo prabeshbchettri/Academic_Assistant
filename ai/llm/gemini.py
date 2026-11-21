@@ -20,7 +20,7 @@ class GeminiProvider(LLMProvider):
     """
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
-        self.api_key = api_key or settings.gemini_api_key
+        self.api_key = api_key.strip() if api_key else settings.gemini_api_key_str
         self.primary_model = model or settings.gemini_model
         self.fallback_model = settings.gemini_fallback_model
         self._client = None

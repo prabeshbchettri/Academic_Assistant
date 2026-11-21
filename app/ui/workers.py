@@ -49,10 +49,10 @@ class WorkflowWorker(QThread):
     def run(self) -> None:
         try:
             # Select LLM provider
-            if self.use_mock_llm or not settings.gemini_api_key:
+            if self.use_mock_llm or not settings.gemini_api_key_str:
                 provider: LLMProvider = MockProvider()
             else:
-                provider = GeminiProvider()
+                provider = GeminiProvider(api_key=settings.gemini_api_key_str)
 
             app_graph = build_academic_workflow(llm=provider)
             config = {"configurable": {"thread_id": self.thread_id}}

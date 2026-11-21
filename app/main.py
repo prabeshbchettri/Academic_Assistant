@@ -23,7 +23,7 @@ def run_cli_generation(title: str, text: str, category: str = "assignment", mock
     from workflow.state import WorkflowState
 
     init_db()
-    provider = MockProvider() if mock or not settings.gemini_api_key else GeminiProvider()
+    provider = MockProvider() if mock or not settings.gemini_api_key_str else GeminiProvider(api_key=settings.gemini_api_key_str)
     graph = build_academic_workflow(llm=provider)
 
     with get_session() as session:

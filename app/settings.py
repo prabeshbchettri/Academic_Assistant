@@ -43,10 +43,16 @@ class Settings(BaseSettings):
         return path if path.is_absolute() else PROJECT_ROOT / path
 
     def require_gemini_key(self) -> str:
-        value = self.gemini_api_key.get_secret_value()
+        value = self.gemini_api_key_str
         if not value:
             raise RuntimeError("GEMINI_API_KEY is not set. Add it to .env.")
         return value
+
+    @property
+    def gemini_api_key_str(self) -> str:
+        if hasattr(self.gemini_api_key, "get_secret_value"):
+            return self.gemini_api_key.get_secret_value().strip()
+        return str(self.gemini_api_key or "").strip()
 
 
 settings = Settings()
