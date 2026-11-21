@@ -25,6 +25,7 @@ from integrations.gmail.client import (
     get_message_content_and_attachments,
     search_messages,
 )
+from integrations.google_auth import is_authenticated
 from models.assignment import RawInput, SourceType
 
 
@@ -168,6 +169,12 @@ class InputPage(QWidget):
         self.classroom_items: list[dict] = []
         self.tabs.addTab(tab, "Google Classroom")
 
+        # Auto-connect if credentials already saved
+        if is_authenticated():
+            self.classroom_auth_btn.setText("Refresh Classes")
+            self.classroom_auth_btn.setObjectName("SecondaryButton")
+            self._load_classroom_courses(silent=True)
+
     def _setup_gmail_tab(self) -> None:
         tab = QWidget()
         l = QVBoxLayout(tab)
@@ -194,16 +201,26 @@ class InputPage(QWidget):
             self.selected_file_path = Path(path)
             self.file_label.setText(f"Selected: {self.selected_file_path.name}")
 
-    def _load_classroom_courses(self) -> None:
+    def _load_classroom_courses(self, silent: bool = False) -> None:
         try:
             service = build_classroom_service()
             self.classroom_courses = list_courses(service)
+            self.course_combo.blockSignals(True)
             self.course_combo.clear()
             for c in self.classroom_courses:
                 self.course_combo.addItem(c.get("name", "Unnamed Course"), c.get("id"))
-            QMessageBox.information(self, "Google Classroom", f"Found {len(self.classroom_courses)} active courses.")
+            self.course_combo.blockSignals(False)
+            self.classroom_auth_btn.setText("Refresh Classes")
+            self.classroom_auth_btn.setObjectName("SecondaryButton")
+
+            if self.classroom_courses:
+                self._on_course_selected(0)
+
+            if not silent:
+                QMessageBox.information(self, "Google Classroom", f"Found {len(self.classroom_courses)} active courses.")
         except Exception as exc:
-            QMessageBox.critical(self, "Google Auth Error", f"Could not connect to Google Classroom: {exc}")
+            if not silent:
+                QMessageBox.critical(self, "Google Auth Error", f"Could not connect to Google Classroom: {exc}")
 
     def _on_course_selected(self, index: int) -> None:
         if index < 0 or not self.classroom_courses:

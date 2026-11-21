@@ -38,7 +38,13 @@ def _read_token() -> Credentials | None:
     try:
         payload = keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
         if payload:
-            return Credentials.from_authorized_user_info(json.loads(payload))
+            creds = Credentials.from_authorized_user_info(json.loads(payload))
+            # Mirror to persistent file if missing
+            if not TOKEN_PATH.exists():
+                TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+                TOKEN_PATH.write_text(payload, encoding="utf-8")
+                TOKEN_PATH.chmod(0o600)
+            return creds
     except Exception as exc:
         logger.warning("Could not read token from keyring: %s", exc)
 
@@ -53,17 +59,21 @@ def _read_token() -> Credentials | None:
 
 def _write_token(credentials: Credentials) -> None:
     payload = credentials.to_json()
+    # Save to OS keyring
     try:
         keyring.set_password(KEYRING_SERVICE, KEYRING_USERNAME, payload)
         logger.info("Stored Google token in the OS keyring.")
-        return
     except Exception as exc:
         logger.warning("Could not write token to keyring: %s", exc)
 
-    TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-    TOKEN_PATH.write_text(payload, encoding="utf-8")
-    TOKEN_PATH.chmod(0o600)
-    logger.info("Stored Google token at %s", TOKEN_PATH)
+    # Also always save to persistent file backup (mode 600)
+    try:
+        TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+        TOKEN_PATH.write_text(payload, encoding="utf-8")
+        TOKEN_PATH.chmod(0o600)
+        logger.info("Stored Google token at %s", TOKEN_PATH)
+    except Exception as exc:
+        logger.warning("Could not write token to file: %s", exc)
 
 
 def _has_scopes(credentials: Credentials, scopes: Sequence[str]) -> bool:
