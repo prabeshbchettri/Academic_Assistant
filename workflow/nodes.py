@@ -33,8 +33,14 @@ logger = logging.getLogger(__name__)
 
 
 def normalize_node(state: WorkflowState) -> dict[str, Any]:
-    raw_dict = state.get("raw_input", {})
-    raw = RawInput.model_validate(raw_dict)
+    raw_dict = state.get("raw_input") or {}
+    if isinstance(raw_dict, RawInput):
+        raw = raw_dict
+    elif isinstance(raw_dict, dict) and raw_dict:
+        raw = RawInput.model_validate(raw_dict)
+    else:
+        raw = RawInput(source_type=SourceType.MANUAL, title="Academic Assignment")
+
     norm = normalize_input(raw)
 
     history = state.get("node_history", []) + ["normalize"]

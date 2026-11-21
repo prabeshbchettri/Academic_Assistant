@@ -52,26 +52,26 @@ def run_cli_generation(title: str, text: str, category: str = "assignment", mock
         "node_history": [],
     }
 
-    print(f"Starting CLI run for '{title}' (Category: {category})...")
+    print(f"Starting CLI run for '{title}' (Category: {category})...", flush=True)
     for chunk in graph.stream(state, config, stream_mode="updates"):
         for node in chunk.keys():
-            print(f"  -> Finished step: {node}")
+            print(f"  -> Finished step: {node}", flush=True)
 
     # Check for human review interrupt and auto-approve in CLI mode
     snapshot = graph.get_state(config)
     if snapshot.tasks and snapshot.tasks[0].interrupts:
-        print("  -> Human review interrupt reached. Auto-approving for CLI export...")
+        print("  -> Human review interrupt reached. Auto-approving for CLI export...", flush=True)
         resume_cmd = Command(resume={"decision": "approve"})
         for chunk in graph.stream(resume_cmd, config, stream_mode="updates"):
             for node in chunk.keys():
-                print(f"  -> Finished step: {node}")
+                print(f"  -> Finished step: {node}", flush=True)
 
     final_snapshot = graph.get_state(config)
     docx_path = final_snapshot.values.get("docx_path")
     pdf_path = final_snapshot.values.get("pdf_path")
-    print("\nWorkflow Finished Successfully!")
-    print(f"  DOCX Output: {docx_path}")
-    print(f"  PDF Output:  {pdf_path}")
+    print("\nWorkflow Finished Successfully!", flush=True)
+    print(f"  DOCX Output: {docx_path}", flush=True)
+    print(f"  PDF Output:  {pdf_path}", flush=True)
 
 
 def main() -> None:

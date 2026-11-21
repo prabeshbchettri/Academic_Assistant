@@ -30,7 +30,12 @@ class GeminiProvider(LLMProvider):
             if not self.api_key:
                 raise ValueError("GEMINI_API_KEY is not configured in settings or environment.")
             from google import genai
-            self._client = genai.Client(api_key=self.api_key)
+            from google.genai import types
+
+            self._client = genai.Client(
+                api_key=self.api_key,
+                http_options=types.HttpOptions(timeout=60000),
+            )
         return self._client
 
     def generate_structured(
@@ -51,7 +56,7 @@ class GeminiProvider(LLMProvider):
             response_schema=schema,
         )
 
-        models_to_try = [self.primary_model, self.fallback_model, "gemini-2.5-flash"]
+        models_to_try = [self.primary_model, self.fallback_model, "gemini-2.5-flash", "gemini-2.5-flash-lite"]
         last_error = None
 
         for model_name in models_to_try:
@@ -88,7 +93,7 @@ class GeminiProvider(LLMProvider):
             max_output_tokens=settings.gemini_max_output_tokens,
         )
 
-        models_to_try = [self.primary_model, self.fallback_model, "gemini-2.5-flash"]
+        models_to_try = [self.primary_model, self.fallback_model, "gemini-2.5-flash", "gemini-2.5-flash-lite"]
         last_error = None
 
         for model_name in models_to_try:

@@ -103,8 +103,11 @@ class WorkflowWorker(QThread):
                     return
 
             final_state = dict(snapshot.values)
+            self.resume_command = None
+            self.raw_input = None
             self.finished_signal.emit(final_state)
 
         except Exception as exc:
             logger.exception("Workflow worker encountered an exception: %s", exc)
+            self.resume_command = None
             self.error_signal.emit(str(exc))

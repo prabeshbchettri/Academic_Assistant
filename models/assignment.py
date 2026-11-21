@@ -25,7 +25,7 @@ class SourceType(str, Enum):
 
 
 class RawInput(BaseModel):
-    source_type: SourceType
+    source_type: SourceType = SourceType.MANUAL
     title: str = ""
     raw_text: str = ""
     file_path: str | None = None

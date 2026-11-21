@@ -82,10 +82,9 @@ class SectionGenerator:
         ref_context = "\n".join(retrieved_chunks or [])
 
         sections: list[SectionDraft] = []
-        for sec in config.required_sections:
-            if sec.lower() in ("references", "bibliography"):
-                continue  # Handled separately
-
+        target_sections = [s for s in config.required_sections if s.lower() not in ("references", "bibliography")]
+        for idx, sec in enumerate(target_sections, 1):
+            logger.info("Generating section '%s' (%d/%d)...", sec, idx, len(target_sections))
             draft = self.generate_section(
                 config=config,
                 normalized=normalized,
@@ -94,6 +93,7 @@ class SectionGenerator:
                 calculated_data=calc_summary,
                 references_context=ref_context,
             )
+            logger.info("Completed section '%s' (%d words).", sec, draft.word_count)
             sections.append(draft)
 
         # Default standard citations if none retrieved
