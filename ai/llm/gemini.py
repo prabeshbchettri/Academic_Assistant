@@ -34,7 +34,7 @@ class GeminiProvider(LLMProvider):
 
             self._client = genai.Client(
                 api_key=self.api_key,
-                http_options=types.HttpOptions(timeout=60000),
+                http_options=types.HttpOptions(api_version="v1beta", timeout=60000),
             )
         return self._client
 
