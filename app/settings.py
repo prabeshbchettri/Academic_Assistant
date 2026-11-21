@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     gemini_api_key: SecretStr = SecretStr("")
-    gemini_model: str = "gemini-2.5-flash"
-    gemini_fallback_model: str = "gemini-2.5-flash-lite"
+    gemini_model: str = "gemini-2.5-flash-lite"
+    gemini_fallback_model: str = "gemini-2.5-flash"
     gemini_pro_model: str = "gemini-2.5-pro"
     gemini_embedding_model: str = "gemini-embedding-001"
     gemini_max_output_tokens: int = 8192

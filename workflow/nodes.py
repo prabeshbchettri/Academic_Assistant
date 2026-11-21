@@ -45,7 +45,7 @@ def normalize_node(state: WorkflowState) -> dict[str, Any]:
 
     history = state.get("node_history", []) + ["normalize"]
     return {
-        "normalized_input": norm.model_dump(),
+        "normalized_input": norm.model_dump(mode="json"),
         "node_history": history,
         "status": "in_progress",
     }
@@ -73,7 +73,7 @@ def load_config_node(state: WorkflowState) -> dict[str, Any]:
     cfg = load_category_config(cat)
     history = state.get("node_history", []) + ["load_config"]
     return {
-        "category_config": cfg.model_dump(),
+        "category_config": cfg.model_dump(mode="json"),
         "node_history": history,
     }
 
@@ -98,9 +98,15 @@ def check_missing_info_node(state: WorkflowState) -> dict[str, Any]:
             "type": "missing_info",
             "questions": missing_questions,
         })
+        provided_text = ""
+        if isinstance(user_response, dict):
+            provided_text = user_response.get("provided_data") or user_response.get("details") or ""
+        elif user_response:
+            provided_text = str(user_response)
+
         return {
             "missing_info": {"is_missing": True, "questions": missing_questions},
-            "user_provided_data": user_response if isinstance(user_response, dict) else {"details": str(user_response)},
+            "user_provided_data": {"details": provided_text or "Simulated standard observations"},
             "node_history": history,
         }
 
@@ -137,7 +143,7 @@ def generate_content_node(state: WorkflowState, llm: LLMProvider) -> dict[str, A
 
     history = state.get("node_history", []) + ["generate_content"]
     return {
-        "report": report.model_dump(),
+        "report": report.model_dump(mode="json"),
         "node_history": history,
         "retry_count": state.get("retry_count", 0),
     }
@@ -152,7 +158,7 @@ def evaluate_output_node(state: WorkflowState, llm: LLMProvider) -> dict[str, An
 
     history = state.get("node_history", []) + ["evaluate_output"]
     return {
-        "evaluation": eval_result.model_dump(),
+        "evaluation": eval_result.model_dump(mode="json"),
         "failed_sections": eval_result.failed_sections,
         "node_history": history,
     }
@@ -186,7 +192,7 @@ def regenerate_failed_node(state: WorkflowState, llm: LLMProvider) -> dict[str, 
     history = state.get("node_history", []) + [f"regenerate_failed_attempt_{retry_count}"]
 
     return {
-        "report": report.model_dump(),
+        "report": report.model_dump(mode="json"),
         "retry_count": retry_count,
         "node_history": history,
     }
@@ -215,13 +221,13 @@ def human_review_node(state: WorkflowState) -> dict[str, Any]:
                 sec.body_markdown = decision.edited_sections[sec.heading]
                 sec.word_count = len(sec.body_markdown.split())
         return {
-            "human_decision": decision.model_dump(),
-            "report": report.model_dump(),
+            "human_decision": decision.model_dump(mode="json"),
+            "report": report.model_dump(mode="json"),
             "node_history": history,
         }
 
     return {
-        "human_decision": decision.model_dump(),
+        "human_decision": decision.model_dump(mode="json"),
         "node_history": history,
     }
 

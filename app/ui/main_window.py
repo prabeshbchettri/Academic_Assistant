@@ -161,18 +161,24 @@ class MainWindow(QMainWindow):
     def _on_worker_interrupt(self, interrupt_type: str, data: dict) -> None:
         if interrupt_type == "missing_info":
             questions = data.get("questions", ["Additional experimental observations are needed."])
-            prompt_text = "\n".join(questions)
+            prompt_text = "\n".join(f"• {q}" for q in questions)
             text, ok = QInputDialog.getMultiLineText(
                 self,
-                "Missing Information Required",
-                f"The following details are required to complete this document:\n\n{prompt_text}",
+                "Optional Experimental Data",
+                (
+                    "The following details are recommended for this lab report:\n\n"
+                    f"{prompt_text}\n\n"
+                    "Tip: If you do not have specific measurements or trial data,\n"
+                    "leave this blank and click OK (or Cancel) to let the AI generate\n"
+                    "realistic simulated observations and benchmarks automatically."
+                ),
                 "",
             )
             if ok and text.strip():
                 self.worker.configure_resume(self.worker.thread_id, {"provided_data": text.strip()})
                 self.worker.start()
             else:
-                self.worker.configure_resume(self.worker.thread_id, {"provided_data": "None provided."})
+                self.worker.configure_resume(self.worker.thread_id, {"provided_data": "Simulate standard realistic observations."})
                 self.worker.start()
 
         elif interrupt_type == "human_review":

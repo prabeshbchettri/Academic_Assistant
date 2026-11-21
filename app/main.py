@@ -44,7 +44,7 @@ def run_cli_generation(title: str, text: str, category: str = "assignment", mock
     state: WorkflowState = {
         "assignment_id": assign_id,
         "thread_id": thread_id,
-        "raw_input": RawInput(source_type=SourceType.MANUAL, title=title, raw_text=text).model_dump(),
+        "raw_input": RawInput(source_type=SourceType.MANUAL, title=title, raw_text=text).model_dump(mode="json"),
         "category": category,
         "retry_count": 0,
         "max_retries": 3,

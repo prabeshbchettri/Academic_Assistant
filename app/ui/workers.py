@@ -74,7 +74,7 @@ class WorkflowWorker(QThread):
                 initial_state: WorkflowState = {
                     "assignment_id": self.assignment_id,
                     "thread_id": self.thread_id,
-                    "raw_input": self.raw_input.model_dump(),
+                    "raw_input": self.raw_input.model_dump(mode="json"),
                     "category": self.category or "",
                     "retry_count": 0,
                     "max_retries": 3,
