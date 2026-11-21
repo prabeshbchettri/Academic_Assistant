@@ -28,14 +28,14 @@ The first full build includes Google integrations and optional RAG. The DOCX is 
 | Area | Decision | Rationale |
 |---|---|---|
 | Scope | Full system: MVP + Google + RAG | User selected full system |
-| LLM | Google Gemini, `gemini-3.1-pro-preview` (quality target) with `gemini-3.5-flash` fallback (configurable) | User has Gemini Pro; `gemini-2.5-pro` is not available to new API users |
+| LLM | Google Gemini: free-tier default `gemini-3.6-flash`, premium `gemini-3.1-pro-preview` when billing is enabled | User has Gemini Pro; free tier has no Pro quota |
 | Platform | Cross-platform (Linux + Windows) | User selected cross-platform |
 | Python | `uv`-managed Python 3.12 venv | Reproducible, matches spec |
 | Documents | Built-in academic DOCX template + override hook | Clean default, flexible later |
 | Language | English only | User selected English |
 | Google | Integration behind interfaces, setup guide, mocked tests | Credentials not yet created |
-| PDF default | LibreOffice headless | Preserves DOCX fidelity, already installed |
-| PDF premium | LaTeX (optional, user-selectable) | Best typography, math, and native TOC |
+| PDF default | LaTeX via Tectonic (bundled) | Best typography, math, and native TOC; no LibreOffice required |
+| PDF fallback | LibreOffice headless (optional) | DOCX-fidelity fallback if LaTeX is unavailable |
 | Persistence | SQLite + SQLModel, LangGraph SQLite checkpoints | Local-first, crash recovery |
 | Human approval | Mandatory before export | Safety and academic integrity |
 
@@ -73,8 +73,8 @@ flowchart TD
     WF --> LLM[Gemini API]
     WF --> RAG[(ChromaDB - optional)]
     WF --> DOC[DOCX Generator]
-    DOC --> LO[LibreOffice PDF]
-    DOC --> LT[LaTeX Premium PDF]
+    DOC --> LT[LaTeX PDF via Tectonic]
+    DOC --> LO[LibreOffice fallback]
     WF --> G[Classroom / Gmail]
     G --> NORM[Normalization + Dedup]
     NORM --> WF
@@ -86,7 +86,7 @@ flowchart TD
 2. **Orchestration** — LangGraph state machine, routing, retries, interrupts.
 3. **Intelligence** — Gemini provider, classifier, generator, evaluator, retriever.
 4. **Integration** — Google OAuth, Classroom, Gmail, file parsers, OCR.
-5. **Documents** — DOCX builder, LaTeX/LibreOffice PDF exporters.
+5. **Documents** — DOCX builder, Tectonic/LaTeX PDF exporter, LibreOffice fallback.
 6. **Persistence** — SQLite domain tables, workflow checkpoints, audit log.
 
 ### Core design rules
@@ -110,7 +110,7 @@ flowchart TD
 | Desktop UI | PySide6 | Cross-platform desktop app |
 | Orchestration | LangGraph | Stateful workflow, routing, retries, HITL |
 | Checkpoints | `langgraph-checkpoint-sqlite` | Crash recovery and resume |
-| LLM | `google-genai` (Gemini 3.1 Pro / 3.5 Flash fallback) | Classification, generation, evaluation, embeddings |
+| LLM | `google-genai` (Gemini 3.6 Flash default / 3.1 Pro premium) | Classification, generation, evaluation, embeddings |
 | Validation | Pydantic v2 | Schemas and structured output |
 | Settings | `pydantic-settings` | Typed configuration |
 | Database | SQLite + SQLModel | Local persistence |
@@ -124,8 +124,9 @@ flowchart TD
 | Resilience | `tenacity` | Retry/backoff for API calls |
 | Templating | Jinja2 | Prompts and LaTeX templates |
 | DOCX creation | `python-docx` | Programmatic document generation |
-| PDF default | LibreOffice headless | DOCX-to-PDF with high fidelity |
-| PDF premium | XeLaTeX + `latexmk` | Maximum typography and math quality |
+| PDF default | Tectonic (XeTeX engine) | Self-contained LaTeX, cross-platform, bundleable |
+| PDF fallback | LibreOffice headless | DOCX-to-PDF fallback |
+| PDF optional | System XeLaTeX + `latexmk` | Use an existing TeX installation when present |
 | Testing | pytest, pytest-qt, pytest-mock, pytest-cov | Unit, integration, UI |
 | Quality | ruff, mypy | Lint and type checking |
 | Packaging | PyInstaller | Native builds per OS |
@@ -136,7 +137,7 @@ flowchart TD
 - **`[google]`**: Google API clients.
 - **`[rag]`**: ChromaDB.
 - **`[dev]`**: pytest, ruff, mypy, PyInstaller.
-- **LaTeX**: external TeX distribution, not a Python dependency.
+- **LaTeX**: Tectonic binary bundled with the app, or an optional system TeX distribution.
 
 ---
 
@@ -431,9 +432,12 @@ Implementations:
 
 ### Gemini configuration
 
-- Primary model: `gemini-3.1-pro-preview` for classification, generation, and evaluation.
-- Fallback model: `gemini-3.5-flash` when the primary model is unavailable or the project has no Pro quota.
+- Free-tier default: `gemini-3.6-flash` for classification, generation, and evaluation.
+- Premium model: `gemini-3.1-pro-preview` when billing is enabled on the Google Cloud project.
+- Fallback chain: `gemini-3.6-flash` → `gemini-3.5-flash` → `gemini-2.5-flash`.
 - `gemini-2.5-pro` is listed by the API but returns 404 for new users; do not rely on it.
+- Pro models have zero free-tier quota; the app detects this at startup and uses the free-tier model.
+- Gemini 3.x Flash models use thinking tokens; set a generous max output token budget (for example 8192).
 - Model availability and quota are checked at startup; the resolved model is cached for the session.
 - Embeddings: `gemini-embedding-001`.
 - Temperature: low for evaluation (0.0–0.2), moderate for generation (0.4–0.7).
@@ -571,25 +575,17 @@ Implementations:
 - Simple equations as formatted text initially; complex equations may be rendered as images.
 - Template override: replace `document/templates/academic_base.docx`.
 
-### PDF default: LibreOffice headless
+### PDF default: LaTeX via Tectonic
 
-Why: preserves DOCX layout, is cross-platform, and is already available.
+LaTeX is the default PDF engine for all categories. It provides the best typography, native equations, correct table-of-contents page numbers, and professional references. To avoid requiring a full TeX installation, the app bundles **Tectonic**, a self-contained XeTeX-based LaTeX engine available for Windows, Linux, and macOS.
 
-Quality configuration:
+Why Tectonic:
 
-- Export PDF/A-2b where possible.
-- Tagged PDF and bookmarks enabled.
-- Embedded fonts.
-- No image downsampling; maximum image resolution 600 DPI.
-- Document metadata populated.
-- Update TOC and fields via a UNO script before export, because headless conversion does not reliably refresh page numbers.
-- Detect the LibreOffice binary on Linux, macOS, and Windows.
-- Run with a timeout and capture stderr.
-- Validate output with `pypdf` (text extraction) and optional `veraPDF` (PDF/A).
-
-### PDF premium: LaTeX (optional, recommended for math-heavy reports)
-
-LaTeX is a strong choice for maximum-quality academic PDFs, especially lab reports with equations, tables, units, and references. It is included as an **optional premium exporter**, not the default, because it requires a TeX distribution and a second template.
+- Single cross-platform binary, bundleable with PyInstaller.
+- Uses the XeTeX engine, so Unicode and system fonts work through `fontspec`.
+- Fetches missing packages on demand and caches them.
+- No LibreOffice dependency.
+- Produces the same high-quality output as a standard XeLaTeX build.
 
 Pipeline:
 
@@ -598,8 +594,8 @@ Pipeline:
 3. Escape all user and LLM text with a dedicated escaper.
 4. Sanitize math to a safe command set.
 5. Write references to a `.bib` file or `thebibliography`.
-6. Compile with `latexmk -xelatex -interaction=nonstopmode -halt-on-error`.
-7. Compile in an isolated temporary directory with a timeout.
+6. Compile with the bundled Tectonic binary in an isolated temporary directory.
+7. Enforce a timeout and capture the compile log.
 8. Validate the PDF and copy it to versioned output storage.
 
 Template features:
@@ -609,33 +605,54 @@ Template features:
 - `booktabs`, `siunitx`, `graphicx`, `caption`, `float` for tables and figures.
 - `amsmath`, `mathtools`, `unicode-math` for equations.
 - `hyperref`, `cleveref` for links and cross-references.
-- `biblatex` + `biber` for references, with a manual fallback.
+- `biblatex` + `biber` for references, with a manual `thebibliography` fallback.
 - Native table of contents with correct page numbers.
 - PDF metadata via `hyperref`.
 - Optional PDF/A via `pdfx` or a Ghostscript post-process.
 
+### LaTeX problems and how the plan handles them
+
+| Problem | Mitigation |
+|---|---|
+| TeX is not installed on Windows/Linux | Bundle Tectonic; no system TeX required |
+| Full TeX Live is very large | Use Tectonic or TinyTeX instead of a full distribution |
+| First compile may download packages | Pre-warm the Tectonic cache during packaging; document offline setup |
+| Special characters break compilation | Escape every text field; sanitize math; never pass raw LaTeX |
+| LaTeX injection | Trusted templates only; deny `\input`, `\write`, `\openout`, `\catcode`, `\def`, `\usepackage` in generated content |
+| Shell escape risk | Compile with shell escape disabled or untrusted mode; sandbox in a temp directory |
+| Compile errors are hard to read | Capture logs, map common errors to user-friendly messages, offer DOCX fallback |
+| Missing fonts differ by OS | Bundle fonts and use `fontspec` with explicit font paths |
+| SVG images are unsupported | Convert charts to PDF or high-resolution PNG before inclusion |
+| Complex tables overflow | Use `tabularx`, `longtable`, and explicit column specifications |
+| Reference tooling adds dependencies | Prefer `thebibliography`; use `biblatex`/`biber` only when available |
+| PDF/A and accessibility are harder | Optional `pdfx`/Ghostscript post-process; validate with `veraPDF` |
+| DOCX and PDF can drift | Both render from the same structured report; add visual regression tests |
+| Word templates cannot be reproduced exactly | DOCX remains the submission artifact; LaTeX is the high-quality PDF view |
+
 Security:
 
-- Compile with `-no-shell-escape`.
+- Compile with shell escape disabled or Tectonic's untrusted mode.
 - Never accept raw LaTeX from the LLM; only structured fields and sanitized math.
-- Deny dangerous commands such as `\input`, `\include`, `\write`, `\openout`, `\read`, `\catcode`, `\def`, `\newcommand`, `\special`, and `\usepackage` in generated content.
+- Deny dangerous commands in generated content.
 - Restrict `\includegraphics` to controlled storage paths.
 - Compile in a temporary sandbox directory.
 - Enforce time and size limits.
 
-Toolchain and packaging:
+Toolchain detection and fallback chain:
 
-- Detect `xelatex` and `latexmk`.
-- If LaTeX is unavailable, fall back to LibreOffice and inform the user.
-- Do not bundle a full TeX distribution.
-- Document installation options: TeX Live, MiKTeX, or TinyTeX.
-- Optionally offer a guided TinyTeX install in the settings page.
+1. Bundled Tectonic binary.
+2. System `tectonic`.
+3. System `xelatex` + `latexmk`.
+4. LibreOffice headless (optional).
+5. DOCX-only export with clear instructions if no PDF engine is available.
 
-LaTeX vs Typst:
+Packaging:
 
-- LaTeX has the broadest academic ecosystem and best-in-class math.
-- Typst is easier to bundle (single binary), faster, and modern, but has a smaller package ecosystem.
-- The exporter interface keeps both options open; LaTeX is the premium path in this plan.
+- Ship platform-specific Tectonic binaries under `document/bin/<platform>/`.
+- Add them to the PyInstaller build.
+- Store the Tectonic cache in the user's app-data directory, not the install directory.
+- Pre-warm the cache during the build to support offline use.
+- Provide a documented offline mode using a pre-populated cache or TinyTeX.
 
 ### PDF exporter interface
 
@@ -646,10 +663,11 @@ class PdfExporter(Protocol):
 
 Implementations:
 
-- `LibreOfficeExporter` — default, cross-platform.
-- `LatexExporter` — premium quality, optional.
+- `TectonicExporter` — default, bundled LaTeX engine.
+- `SystemLatexExporter` — optional, uses an installed XeLaTeX/latexmk.
+- `LibreOfficeExporter` — fallback, optional.
 - `WordComExporter` — Windows + Microsoft Word only, optional.
-- `WeasyPrintExporter` — fallback if LibreOffice is unavailable, optional.
+- `WeasyPrintExporter` — last-resort pure-Python fallback, optional.
 
 ### Output storage
 
@@ -657,7 +675,7 @@ Implementations:
 storage/outputs/<assignment_id>/<version>/
 ├── report.docx
 ├── report.pdf
-├── report.tex          # when LaTeX is used
+├── report.tex          # LaTeX source for the PDF
 └── metadata.json
 ```
 
@@ -759,15 +777,14 @@ storage/outputs/<assignment_id>/<version>/
 ## 16. Packaging and distribution
 
 - PyInstaller one-folder build for faster startup and easier ChromaDB bundling.
-- Bundle YAML configs, prompts, DOCX template, and LaTeX templates.
+- Bundle YAML configs, prompts, DOCX template, LaTeX templates, and platform-specific Tectonic binaries.
 - Hidden imports for Google, LangGraph, and ChromaDB.
 - Lazy-load optional integrations to keep startup fast.
 - Build natively on each OS; PyInstaller cannot cross-compile.
 - Linux artifact tested on this machine.
 - Windows build documented for a Windows host.
 - External prerequisites documented:
-  - LibreOffice for default PDF export.
-  - TeX distribution for LaTeX PDF export.
+  - Tectonic is bundled; system TeX and LibreOffice are optional fallbacks.
   - Tesseract for OCR.
 - Provide `scripts/run.sh`, `scripts/run.bat`, and `scripts/build.py`.
 - Include version information and an application icon.
@@ -783,8 +800,8 @@ storage/outputs/<assignment_id>/<version>/
 | 2 | Manual input, PDF/DOCX/TXT parsing, OCR fallback, normalization, deduplication | Parser fixture tests pass |
 | 3 | Gemini provider with model fallback, classifier, section generator, deterministic + semantic evaluator, retry logic | Mocked integration tests cover pass/fail/retry |
 | 4 | LangGraph graph, SQLite checkpoints, interrupts, resume, recovery | Graph path tests pass |
-| 5 | DOCX generator, built-in template, LibreOffice PDF export, versioned storage | DOCX reopens correctly; PDF generated |
-| 5b | LaTeX premium exporter, template, escaping, sanitization, fallback | LaTeX PDF compiles when toolchain present; fallback works |
+| 5 | DOCX generator, built-in template, Tectonic LaTeX PDF export, versioned storage | DOCX reopens correctly; LaTeX PDF generated |
+| 5b | LaTeX template hardening, escaping, sanitization, toolchain fallback chain | Compiles with bundled Tectonic; fallback chain works |
 | 6 | PySide6 UI, workers, review/edit/approve flow, history, settings | Manual end-to-end test and UI smoke tests pass |
 | 7 | Google OAuth, Classroom, Gmail, setup guide, mocked tests | Mocked tests pass; live flow documented |
 | 8 | ChromaDB RAG ingestion, retrieval, grounding, citations | Retrieval and grounding tests pass |
@@ -810,9 +827,11 @@ Each phase ends with tests and a short demo path.
 | Gmail search noise | Wrong assignment selected | Filters, attachment matching, user confirmation |
 | Duplicate assignments | Repeated work | Content hash and external source IDs |
 | OCR quality | Poor extraction | Confidence warning, editable text, manual correction |
-| LibreOffice missing | No default PDF | Detect and fall back to LaTeX or WeasyPrint; clear guidance |
-| LaTeX toolchain missing or large | Premium PDF unavailable | Optional install, detection, fallback to LibreOffice, TinyTeX guidance |
-| LaTeX injection | Unsafe compile | Trusted templates, escaped text, sanitized math, `-no-shell-escape`, sandbox |
+| TeX toolchain missing or large | No PDF export | Bundle Tectonic; fall back to system TeX, LibreOffice, or DOCX-only |
+| Tectonic first-run package downloads | Offline compile fails | Pre-warm cache at build time; document offline bundle |
+| LaTeX compile errors | Export fails | Escaping, sanitization, captured logs, user-friendly errors, fallback |
+| LaTeX injection | Unsafe compile | Trusted templates, escaped text, sanitized math, untrusted mode, sandbox |
+| LibreOffice missing | Fallback unavailable | Tectonic is primary; fallback chain continues to DOCX-only |
 | DOCX/PDF divergence | Inconsistent outputs | DOCX canonical; both render from the same structured report; visual regression tests |
 | PyInstaller size | Large distribution | One-folder build, optional extras, lazy imports |
 | SQLite concurrency | Locked database | WAL, per-thread connections, single-writer repository |
@@ -827,8 +846,9 @@ Each phase ends with tests and a short demo path.
 - Billing enabled on the Google Cloud project for Gemini Pro API quota; otherwise the app falls back to Flash.
 - Google Cloud project with Classroom API and Gmail API enabled.
 - OAuth desktop client JSON (`credentials.json`).
-- LibreOffice installed for default PDF export.
-- TeX distribution (TeX Live, MiKTeX, or TinyTeX) for LaTeX PDF export.
+- Tectonic binary bundled with the app (recommended); no system TeX or LibreOffice required.
+- Optional: system TeX distribution or LibreOffice as fallbacks.
+- Network access on first Tectonic compile unless the package cache is pre-warmed.
 - Tesseract installed for OCR of scanned PDFs.
 - A Windows host for the Windows EXE build.
 - Python 3.12 available through `uv`.
@@ -846,7 +866,7 @@ The full build is complete when:
 5. Deterministic and semantic evaluation run independently.
 6. Failed sections are regenerated up to three times.
 7. The user can review, edit, regenerate, and approve.
-8. DOCX and high-quality PDF are exported and stored with version history.
+8. DOCX and a high-quality LaTeX PDF (via Tectonic) are exported and stored with version history.
 9. Google Classroom and Gmail imports work with credentials and are mocked in tests.
 10. Optional RAG retrieval improves grounding with citations.
 11. Workflow state survives crashes and can be resumed.
@@ -859,10 +879,10 @@ The full build is complete when:
 
 ## 21. Open items for final review
 
-1. Confirm that LaTeX is included as the premium PDF engine in the first full build, or deferred.
-2. Confirm whether equations are central enough to prioritize LaTeX over LibreOffice in the default UI.
+1. Confirm Tectonic as the bundled LaTeX engine, or use TinyTeX/system TeX instead.
+2. Confirm whether the Tectonic package cache must be fully offline at first run.
 3. Confirm the desired citation style (IEEE is the current default).
 4. Confirm whether the built-in DOCX template is acceptable until a university template is provided.
 5. Confirm whether RAG should be enabled by default or opt-in per category.
 6. Confirm the Windows build environment and who will produce the first EXE.
-7. Confirm whether billing will be enabled for Gemini Pro API quota or the app should default to Flash.
+7. Confirm whether billing will be enabled for Gemini Pro API quota or the app should default to `gemini-3.6-flash`.
