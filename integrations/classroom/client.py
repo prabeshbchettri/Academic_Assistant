@@ -72,4 +72,33 @@ def list_coursework_materials(service: Any, course_id: str) -> list[dict[str, An
     return items
 
 
+def download_drive_file(drive_file_id: str, destination_path: str, scopes: Iterable[str] | None = None) -> bool:
+    """
+    Downloads a Google Drive attachment file by ID.
+    """
+    import io
+    from googleapiclient.http import MediaIoBaseDownload
+    from pathlib import Path
+
+    try:
+        credentials = get_credentials(scopes or STUDENT_SCOPES)
+        drive_service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        request = drive_service.files().get_media(fileId=drive_file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+
+        dest = Path(destination_path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(fh.getvalue())
+        logger.info("Successfully downloaded Drive file %s to %s", drive_file_id, destination_path)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to download Drive attachment %s: %s", drive_file_id, exc)
+        return False
+
+
+
 

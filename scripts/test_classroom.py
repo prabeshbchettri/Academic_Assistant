@@ -48,6 +48,11 @@ def main() -> int:
         help="Course ID to inspect. Defaults to the first course.",
     )
     parser.add_argument(
+        "--course-name",
+        "--course",
+        help="Course Name to filter by (case-insensitive substring).",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print the raw courses response as JSON.",
@@ -83,8 +88,18 @@ def main() -> int:
     for course in courses:
         _print_course(course)
 
-    course_id = args.course_id or courses[0]["id"]
-    print(f"\nCoursework for course {course_id}:")
+    matched_course = None
+    if args.course_name:
+        for c in courses:
+            if args.course_name.lower() in c.get("name", "").lower():
+                matched_course = c
+                break
+        if not matched_course:
+            print(f"Warning: No course matched name '{args.course_name}'. Using first course.")
+
+    course_id = args.course_id or (matched_course["id"] if matched_course else courses[0]["id"])
+    course_name = matched_course.get("name") if matched_course else courses[0].get("name", "")
+    print(f"\nCoursework for course '{course_name}' ({course_id}):")
     try:
         work = list_coursework(service, course_id)
         materials = list_coursework_materials(service, course_id)

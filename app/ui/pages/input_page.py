@@ -41,13 +41,13 @@ class InputPage(QWidget):
         title.setStyleSheet("font-size: 20px; font-weight: bold; color: #1B365D;")
         layout.addWidget(title)
 
-        # Tabs for 4 sources
+        # Tabs: Google Classroom first as primary student workflow
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
 
+        self._setup_classroom_tab()
         self._setup_manual_tab()
         self._setup_file_tab()
-        self._setup_classroom_tab()
         self._setup_gmail_tab()
 
         # Category and Start Bar
@@ -118,22 +118,51 @@ class InputPage(QWidget):
     def _setup_classroom_tab(self) -> None:
         tab = QWidget()
         l = QVBoxLayout(tab)
+        l.setSpacing(12)
 
         header_layout = QHBoxLayout()
-        self.classroom_auth_btn = QPushButton("Connect Google Account")
-        self.classroom_auth_btn.setObjectName("SecondaryButton")
+        self.classroom_auth_btn = QPushButton("Connect Google Classroom")
+        self.classroom_auth_btn.setObjectName("PrimaryButton")
         self.classroom_auth_btn.clicked.connect(self._load_classroom_courses)
         header_layout.addWidget(self.classroom_auth_btn)
 
+        header_layout.addWidget(QLabel("Select Enrolled Class:"))
         self.course_combo = QComboBox()
+        self.course_combo.setMinimumWidth(250)
         self.course_combo.currentIndexChanged.connect(self._on_course_selected)
         header_layout.addWidget(self.course_combo)
         header_layout.addStretch()
         l.addLayout(header_layout)
 
-        l.addWidget(QLabel("Coursework / Assignments:"))
+        l.addWidget(QLabel("Assignments in this Class:"))
         self.coursework_list = QListWidget()
+        self.coursework_list.currentRowChanged.connect(self._on_coursework_selected)
         l.addWidget(self.coursework_list)
+
+        # Assignment details card
+        self.assignment_preview_card = QFrame()
+        self.assignment_preview_card.setProperty("class", "Card")
+        preview_layout = QVBoxLayout(self.assignment_preview_card)
+        
+        self.selected_assignment_title = QLabel("Select an assignment above to preview instructions.")
+        self.selected_assignment_title.setStyleSheet("font-weight: bold; font-size: 14px; color: #1B365D;")
+        preview_layout.addWidget(self.selected_assignment_title)
+
+        self.selected_assignment_desc = QTextEdit()
+        self.selected_assignment_desc.setReadOnly(True)
+        self.selected_assignment_desc.setMaximumHeight(100)
+        self.selected_assignment_desc.setPlaceholderText("Assignment instructions from your teacher will appear here...")
+        preview_layout.addWidget(self.selected_assignment_desc)
+
+        build_btn_layout = QHBoxLayout()
+        build_btn_layout.addStretch()
+        self.quick_build_btn = QPushButton("Build Document for Selected Assignment")
+        self.quick_build_btn.setObjectName("PrimaryButton")
+        self.quick_build_btn.clicked.connect(self._on_start_clicked)
+        build_btn_layout.addWidget(self.quick_build_btn)
+        preview_layout.addLayout(build_btn_layout)
+
+        l.addWidget(self.assignment_preview_card)
 
         self.classroom_courses: list[dict] = []
         self.classroom_items: list[dict] = []
@@ -186,8 +215,18 @@ class InputPage(QWidget):
             self.coursework_list.clear()
             for item in self.classroom_items:
                 self.coursework_list.addItem(f"{item.get('title', 'Untitled')} (ID: {item.get('id')})")
+            if self.classroom_items:
+                self.coursework_list.setCurrentRow(0)
         except Exception:
             self.coursework_list.clear()
+
+    def _on_coursework_selected(self, row: int) -> None:
+        if 0 <= row < len(self.classroom_items):
+            item = self.classroom_items[row]
+            title = item.get("title", "Untitled Assignment")
+            desc = item.get("description", "(No written description provided by teacher)")
+            self.selected_assignment_title.setText(f"Assignment: {title}")
+            self.selected_assignment_desc.setPlainText(desc)
 
     def _search_gmail(self) -> None:
         try:
@@ -204,33 +243,10 @@ class InputPage(QWidget):
         current_tab_idx = self.tabs.currentIndex()
         cat = self.category_combo.currentData() or ""
 
-        if current_tab_idx == 0:  # Manual
-            text = self.manual_text.toPlainText().strip()
-            title = self.manual_title.text().strip()
-            course = self.manual_course.text().strip()
-            if not text:
-                QMessageBox.warning(self, "Missing Input", "Please enter assignment text.")
-                return
-            raw = RawInput(source_type=SourceType.MANUAL, title=title, raw_text=text, course_name=course)
-            self.start_generation.emit(raw, cat)
-
-        elif current_tab_idx == 1:  # File
-            if not self.selected_file_path:
-                QMessageBox.warning(self, "Missing Input", "Please select a document file.")
-                return
-            notes = self.file_notes.toPlainText().strip()
-            raw = RawInput(
-                source_type=SourceType.FILE,
-                title=self.selected_file_path.stem,
-                file_path=str(self.selected_file_path),
-                raw_text=notes,
-            )
-            self.start_generation.emit(raw, cat)
-
-        elif current_tab_idx == 2:  # Classroom
+        if current_tab_idx == 0:  # Classroom
             row = self.coursework_list.currentRow()
             if row < 0 or not self.classroom_items:
-                QMessageBox.warning(self, "Missing Input", "Please select a coursework item.")
+                QMessageBox.warning(self, "Missing Input", "Please select an assignment from the list.")
                 return
             item = self.classroom_items[row]
             title = item.get("title", "Classroom Assignment")
@@ -240,6 +256,29 @@ class InputPage(QWidget):
                 title=title,
                 raw_text=description or title,
                 external_id=item.get("id"),
+            )
+            self.start_generation.emit(raw, cat)
+
+        elif current_tab_idx == 1:  # Manual
+            text = self.manual_text.toPlainText().strip()
+            title = self.manual_title.text().strip()
+            course = self.manual_course.text().strip()
+            if not text:
+                QMessageBox.warning(self, "Missing Input", "Please enter assignment text.")
+                return
+            raw = RawInput(source_type=SourceType.MANUAL, title=title, raw_text=text, course_name=course)
+            self.start_generation.emit(raw, cat)
+
+        elif current_tab_idx == 2:  # File
+            if not self.selected_file_path:
+                QMessageBox.warning(self, "Missing Input", "Please select a document file.")
+                return
+            notes = self.file_notes.toPlainText().strip()
+            raw = RawInput(
+                source_type=SourceType.FILE,
+                title=self.selected_file_path.stem,
+                file_path=str(self.selected_file_path),
+                raw_text=notes,
             )
             self.start_generation.emit(raw, cat)
 

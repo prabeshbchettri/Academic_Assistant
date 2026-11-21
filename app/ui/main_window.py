@@ -140,11 +140,11 @@ class MainWindow(QMainWindow):
     def _on_home_navigate_input(self, source_tab: str) -> None:
         self.btn_input.setChecked(True)
         self.stack.setCurrentIndex(1)
-        if source_tab == "manual":
+        if source_tab == "classroom":
             self.input_page.tabs.setCurrentIndex(0)
-        elif source_tab == "file":
+        elif source_tab == "manual":
             self.input_page.tabs.setCurrentIndex(1)
-        elif source_tab == "classroom":
+        elif source_tab == "file":
             self.input_page.tabs.setCurrentIndex(2)
 
     def _on_start_generation(self, raw_input: RawInput, category: str) -> None:
