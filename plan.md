@@ -28,6 +28,7 @@ The first full build includes Google integrations and optional RAG. The DOCX is 
 | Area | Decision | Rationale |
 |---|---|---|
 | Scope | Full system: MVP + Google + RAG | User selected full system |
+| Primary user | Student | Production app is student-facing and reads only student data |
 | LLM | Google Gemini: free-tier default `gemini-3.6-flash`, premium `gemini-3.1-pro-preview` when billing is enabled | User has Gemini Pro; free tier has no Pro quota |
 | Platform | Cross-platform (Linux + Windows) | User selected cross-platform |
 | Python | `uv`-managed Python 3.12 venv | Reproducible, matches spec |
@@ -42,6 +43,12 @@ The first full build includes Google integrations and optional RAG. The DOCX is 
 ---
 
 ## 3. Goals and non-goals
+
+### Primary user
+
+The production application is **student-facing**. A student signs in with their own Google account, fetches assignments from courses they are enrolled in, generates and reviews content, and exports the final document.
+
+The app never creates courses or assignments and never requests write scopes.
 
 ### Goals
 
@@ -60,6 +67,8 @@ The first full build includes Google integrations and optional RAG. The DOCX is 
 - Real-time collaboration.
 - Generating content in languages other than English.
 - Fully automatic approval without human review.
+
+Post-approval submission to Classroom may be added later as an explicit, confirmed action. It must never happen automatically.
 
 ---
 
