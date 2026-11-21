@@ -4,7 +4,7 @@ from app.settings import PROJECT_ROOT, Settings
 def test_defaults_do_not_require_env() -> None:
     settings = Settings(_env_file=None)
     assert settings.app_name == "Academic AI"
-    assert settings.gemini_model == "gemini-3.6-flash"
+    assert settings.gemini_model == "gemini-2.5-flash"
     assert settings.pdf_engine == "tectonic"
     assert settings.gemini_api_key.get_secret_value() == ""
 
