@@ -1,0 +1,5 @@
+Evaluate the lab report section '{{ section_heading }}' according to scientific accuracy and the rubric.
+Examine whether calculations, procedure steps, or observations match the experimental requirements without hallucination.
+Rubric:
+{{ rubric_text }}
+Score each criterion (0.0 to 1.0) and flag any missing elements or inaccuracies.

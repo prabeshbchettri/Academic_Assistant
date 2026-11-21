@@ -1,0 +1,19 @@
+Generate the requested section for the academic assignment.
+Assignment Details:
+Title: {{ title }}
+Course: {{ course }}
+Context and Requirements:
+{{ assignment_text }}
+
+Current Section to Generate: {{ section_heading }}
+Target Word Count: {{ min_words }} - {{ max_words }} words.
+Retrieved References / Knowledge:
+{{ references_context }}
+
+Previous Sections Drafted:
+{{ prior_sections_summary }}
+
+Requirements:
+- Write coherent, detailed Markdown body paragraphs for this section.
+- If tabular data or figures are needed, define structured table/figure objects.
+- Cite references using [1], [2], etc., matching the provided references list.

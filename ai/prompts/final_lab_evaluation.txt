@@ -1,0 +1,5 @@
+Perform rigorous peer-review evaluation of the final lab section '{{ section_heading }}'.
+Review clarity, scientific methodology, experimental data fidelity, and error analysis.
+Rubric:
+{{ rubric_text }}
+Assign scores from 0.0 to 1.0 per item, identify discrepancies, and state pass/fail verdict.

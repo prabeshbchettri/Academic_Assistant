@@ -1,0 +1,12 @@
+Generate section '{{ section_heading }}' for the final comprehensive laboratory report.
+Title: {{ title }}
+Theory and Source Data:
+{{ assignment_text }}
+
+Calculations and Data Analysis:
+{{ calculated_data }}
+
+References Context:
+{{ references_context }}
+
+Draft the section thoroughly within {{ min_words }} - {{ max_words }} words.
