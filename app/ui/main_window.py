@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QInputDialog,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.preferences import load_preferences
 from app.settings import settings
 from app.ui.pages.history_page import HistoryPage
 from app.ui.pages.home_page import HomePage
@@ -34,8 +36,9 @@ logger = logging.getLogger(__name__)
 class MainWindow(QMainWindow):
     def __init__(self, use_mock_llm: bool = False):
         super().__init__()
-        self.setWindowTitle(f"{settings.app_name} — Academic Document Preparation System")
-        self.resize(1100, 750)
+        self.setWindowTitle(f"{settings.app_name} — Student Workspace")
+        self.resize(1180, 800)
+        self.setMinimumSize(980, 680)
 
         # Initialize local SQLite database
         init_db()
@@ -61,43 +64,75 @@ class MainWindow(QMainWindow):
         # Left Sidebar
         self.sidebar = QFrame()
         self.sidebar.setObjectName("Sidebar")
-        self.sidebar.setFixedWidth(220)
+        self.sidebar.setFixedWidth(250)
         sidebar_layout = QVBoxLayout(self.sidebar)
-        sidebar_layout.setContentsMargins(12, 20, 12, 20)
+        sidebar_layout.setContentsMargins(16, 22, 16, 18)
         sidebar_layout.setSpacing(8)
+
+        brand = QFrame()
+        brand.setObjectName("Brand")
+        brand_layout = QVBoxLayout(brand)
+        brand_layout.setContentsMargins(8, 0, 8, 16)
+        brand_layout.setSpacing(2)
+        brand_title = QLabel("Academic AI")
+        brand_title.setObjectName("BrandTitle")
+        brand_layout.addWidget(brand_title)
+        brand_subtitle = QLabel("Student Workspace")
+        brand_subtitle.setObjectName("BrandSubtitle")
+        brand_layout.addWidget(brand_subtitle)
+        sidebar_layout.addWidget(brand)
 
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
 
-        self.btn_home = QPushButton("Home Dashboard")
+        self.btn_home = QPushButton("Dashboard")
+        self.btn_home.setObjectName("NavButton")
         self.btn_home.setCheckable(True)
         self.btn_home.setChecked(True)
         self.nav_group.addButton(self.btn_home, 0)
         sidebar_layout.addWidget(self.btn_home)
 
-        self.btn_input = QPushButton("New Assignment")
+        self.btn_input = QPushButton("Classroom & Input")
+        self.btn_input.setObjectName("NavButton")
         self.btn_input.setCheckable(True)
         self.nav_group.addButton(self.btn_input, 1)
         sidebar_layout.addWidget(self.btn_input)
 
         self.btn_processing = QPushButton("Active Processing")
+        self.btn_processing.setObjectName("NavButton")
         self.btn_processing.setCheckable(True)
         self.nav_group.addButton(self.btn_processing, 2)
         sidebar_layout.addWidget(self.btn_processing)
 
         self.btn_review = QPushButton("Review & Approve")
+        self.btn_review.setObjectName("NavButton")
         self.btn_review.setCheckable(True)
         self.nav_group.addButton(self.btn_review, 3)
         sidebar_layout.addWidget(self.btn_review)
 
         self.btn_history = QPushButton("Document History")
+        self.btn_history.setObjectName("NavButton")
         self.btn_history.setCheckable(True)
         self.nav_group.addButton(self.btn_history, 4)
         sidebar_layout.addWidget(self.btn_history)
 
         sidebar_layout.addStretch()
 
+        self.sidebar_user = QFrame()
+        self.sidebar_user.setObjectName("SidebarUser")
+        user_layout = QVBoxLayout(self.sidebar_user)
+        user_layout.setContentsMargins(12, 10, 12, 10)
+        user_layout.setSpacing(2)
+        self.sidebar_user_name = QLabel("Student")
+        self.sidebar_user_name.setObjectName("SidebarUserName")
+        user_layout.addWidget(self.sidebar_user_name)
+        self.sidebar_user_meta = QLabel("Complete your profile")
+        self.sidebar_user_meta.setObjectName("SidebarUserMeta")
+        user_layout.addWidget(self.sidebar_user_meta)
+        sidebar_layout.addWidget(self.sidebar_user)
+
         self.btn_settings = QPushButton("Settings")
+        self.btn_settings.setObjectName("NavButton")
         self.btn_settings.setCheckable(True)
         self.nav_group.addButton(self.btn_settings, 5)
         sidebar_layout.addWidget(self.btn_settings)
@@ -106,7 +141,7 @@ class MainWindow(QMainWindow):
 
         # Pages Stack
         self.stack = QStackedWidget()
-        self.home_page = HomePage()
+        self.home_page = HomePage(auto_sync=not use_mock_llm)
         self.input_page = InputPage()
         self.processing_page = ProcessingPage()
         self.review_page = ReviewPage()
@@ -124,18 +159,25 @@ class MainWindow(QMainWindow):
 
         # Connect Navigation
         self.nav_group.idClicked.connect(self._on_nav_clicked)
-        self.home_page.navigate_to_input.connect(self._on_home_navigate_input)
+        self.home_page.open_input.connect(self._on_home_navigate_input)
+        self.home_page.open_course.connect(self._on_open_course)
+        self.home_page.open_settings.connect(self._on_open_settings)
+        self.home_page.open_history.connect(self._on_open_history)
         self.input_page.start_generation.connect(self._on_start_generation)
         self.review_page.review_decided.connect(self._on_review_decision)
 
+        self.refresh_sidebar_profile()
         self.home_page.refresh_recent()
 
     def _on_nav_clicked(self, page_id: int) -> None:
         self.stack.setCurrentIndex(page_id)
         if page_id == 0:
+            self.home_page.refresh_profile()
             self.home_page.refresh_recent()
         elif page_id == 4:
             self.history_page.refresh()
+        elif page_id == 5:
+            self.settings_page.reload_preferences()
 
     def _on_home_navigate_input(self, source_tab: str) -> None:
         self.btn_input.setChecked(True)
@@ -146,6 +188,29 @@ class MainWindow(QMainWindow):
             self.input_page.tabs.setCurrentIndex(1)
         elif source_tab == "file":
             self.input_page.tabs.setCurrentIndex(2)
+
+    def _on_open_course(self, course_id: str) -> None:
+        self.btn_input.setChecked(True)
+        self.stack.setCurrentIndex(1)
+        self.input_page.tabs.setCurrentIndex(0)
+        self.input_page.select_course(course_id)
+
+    def _on_open_settings(self) -> None:
+        self.btn_settings.setChecked(True)
+        self.stack.setCurrentIndex(5)
+        self.settings_page.reload_preferences()
+
+    def _on_open_history(self) -> None:
+        self.btn_history.setChecked(True)
+        self.stack.setCurrentIndex(4)
+        self.history_page.refresh()
+
+    def refresh_sidebar_profile(self) -> None:
+        profile = load_preferences().student
+        self.sidebar_user_name.setText(profile.full_name.strip() or "Student")
+        self.sidebar_user_meta.setText(
+            profile.roll_number.strip() or "Complete your profile"
+        )
 
     def _on_start_generation(self, raw_input: RawInput, category: str) -> None:
         self.btn_processing.setChecked(True)
@@ -178,7 +243,10 @@ class MainWindow(QMainWindow):
                 self.worker.configure_resume(self.worker.thread_id, {"provided_data": text.strip()})
                 self.worker.start()
             else:
-                self.worker.configure_resume(self.worker.thread_id, {"provided_data": "Simulate standard realistic observations."})
+                self.worker.configure_resume(
+                    self.worker.thread_id,
+                    {"provided_data": "Simulate standard realistic observations."},
+                )
                 self.worker.start()
 
         elif interrupt_type == "human_review":
@@ -189,7 +257,9 @@ class MainWindow(QMainWindow):
     def _on_review_decision(self, decision: HumanDecision) -> None:
         self.btn_processing.setChecked(True)
         self.stack.setCurrentIndex(2)
-        self.processing_page.progress_log.status_label.setText("Applying decision & finalizing document...")
+        self.processing_page.progress_log.status_label.setText(
+            "Applying decision & finalizing document..."
+        )
 
         self.worker.configure_resume(self.worker.thread_id, decision.model_dump())
         self.worker.start()
@@ -210,6 +280,10 @@ class MainWindow(QMainWindow):
         self.history_page.refresh()
 
     def _on_worker_error(self, error_message: str) -> None:
-        QMessageBox.critical(self, "Workflow Error", f"The workflow encountered an error:\n\n{error_message}")
+        QMessageBox.critical(
+            self,
+            "Workflow Error",
+            f"The workflow encountered an error:\n\n{error_message}",
+        )
         self.btn_home.setChecked(True)
         self.stack.setCurrentIndex(0)

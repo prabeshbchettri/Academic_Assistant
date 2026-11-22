@@ -68,7 +68,9 @@ class SettingsPage(QWidget):
         # Google Account Connection Status
         c_layout.addWidget(QLabel("Google Workspace Integration:"))
         google_bar = QHBoxLayout()
-        self.google_status_label = QLabel("Status: Connected" if is_authenticated() else "Status: Not Connected")
+        self.google_status_label = QLabel(
+            "Status: Connected" if is_authenticated() else "Status: Not Connected"
+        )
         self.google_status_label.setStyleSheet("font-weight: 600;")
         google_bar.addWidget(self.google_status_label)
 
@@ -88,15 +90,27 @@ class SettingsPage(QWidget):
         layout.addWidget(save_btn)
         layout.addStretch()
 
+    def reload_preferences(self) -> None:
+        """Refresh editable values from persisted preferences."""
+        return
+
     def _test_google_oauth(self) -> None:
         try:
             from integrations.google_auth import get_credentials
             creds = get_credentials()
             if creds and creds.valid:
                 self.google_status_label.setText("Status: Successfully Connected!")
-                QMessageBox.information(self, "Google OAuth", "Google account authorized successfully.")
+                QMessageBox.information(
+                    self,
+                    "Google OAuth",
+                    "Google account authorized successfully.",
+                )
         except Exception as exc:
-            QMessageBox.critical(self, "Google OAuth Error", f"OAuth flow could not complete: {exc}")
+            QMessageBox.critical(
+                self,
+                "Google OAuth Error",
+                f"OAuth flow could not complete: {exc}",
+            )
 
     def _save_settings(self) -> None:
         new_key = self.api_key_input.text().strip()

@@ -13,11 +13,25 @@ from ai.llm.mock import MockProvider
 from app.settings import settings
 from database.db import get_session
 from database.repositories import AssignmentRepository
+from integrations.classroom.client import build_classroom_service, list_courses
 from models.assignment import RawInput
 from workflow.graph import build_academic_workflow
 from workflow.state import WorkflowState
 
 logger = logging.getLogger(__name__)
+
+
+class ClassroomCoursesWorker(QThread):
+    courses_ready = Signal(list)
+    error = Signal(str)
+
+    def run(self) -> None:
+        try:
+            service = build_classroom_service()
+            self.courses_ready.emit(list_courses(service))
+        except Exception as exc:
+            logger.exception("Could not load Classroom courses: %s", exc)
+            self.error.emit(str(exc))
 
 
 class WorkflowWorker(QThread):
@@ -88,7 +102,7 @@ class WorkflowWorker(QThread):
                 stream = app_graph.stream(self.resume_command, config, stream_mode="updates")
 
             for chunk in stream:
-                for node_name, node_update in chunk.items():
+                for node_name, _node_update in chunk.items():
                     msg = f"Completed node: {node_name}"
                     self.progress_signal.emit(node_name, msg)
 
@@ -98,8 +112,12 @@ class WorkflowWorker(QThread):
                 task = snapshot.tasks[0]
                 if task.interrupts:
                     interrupt_val = task.interrupts[0].value
-                    interrupt_type = interrupt_val.get("type", "unknown") if isinstance(interrupt_val, dict) else "unknown"
-                    self.interrupt_signal.emit(interrupt_type, interrupt_val if isinstance(interrupt_val, dict) else {})
+                    if isinstance(interrupt_val, dict):
+                        interrupt_type = interrupt_val.get("type", "unknown")
+                    else:
+                        interrupt_type = "unknown"
+                    payload = interrupt_val if isinstance(interrupt_val, dict) else {}
+                    self.interrupt_signal.emit(interrupt_type, payload)
                     return
 
             final_state = dict(snapshot.values)
