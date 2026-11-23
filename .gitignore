@@ -4,6 +4,7 @@
 !.env.example
 credentials.json
 token.json
+academic.md
 *.pem
 *.key
 
@@ -21,11 +22,16 @@ htmlcov/
 dist/
 build/
 
+# Keep the uv lockfile despite global *.lock ignores
+!uv.lock
+
 # Local application data
 storage/inputs/
 storage/references/
 storage/outputs/
 storage/rag/
+storage/credentials/
+storage/logs/
 *.sqlite
 *.sqlite3
 *.db

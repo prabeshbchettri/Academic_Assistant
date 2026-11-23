@@ -1,0 +1,10 @@
+Generate the section '{{ section_heading }}' for the initial laboratory report.
+Lab Title: {{ title }}
+Experimental Prompt & Observations:
+{{ assignment_text }}
+
+Calculations / Formulas computed:
+{{ calculated_data }}
+
+Target Word Count: {{ min_words }} - {{ max_words }} words.
+Output format: structured section with Markdown body, tables, and citations.

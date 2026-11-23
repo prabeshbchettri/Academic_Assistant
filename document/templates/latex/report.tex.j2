@@ -1,0 +1,69 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{setspace}
+\setstretch{1.15}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    citecolor=blue!70!black,
+    urlcolor=blue!70!black
+}
+
+\title{\textbf{ {{- title -}} }}
+\author{ {{- author | default("Academic Assistant") -}} }
+\date{ {{- date | default("2026") -}} }
+
+\begin{document}
+
+\maketitle
+
+{% if abstract %}
+\begin{abstract}
+{{ abstract }}
+\end{abstract}
+\vspace{1em}
+{% endif %}
+
+\tableofcontents
+\newpage
+
+{% for section in sections %}
+\section{ {{- section.heading -}} }
+
+{{ section.body_latex }}
+
+{% for table in section.tables %}
+\begin{table}[h!]
+\centering
+\caption{ {{- table.caption -}} }
+\begin{tabularx}{\textwidth}{ {% for _ in table.headers %}X{% endfor %} }
+\toprule
+{% for h in table.headers %}\textbf{ {{- h -}} }{% if not loop.last %} & {% endif %}{% endfor %} \\
+\midrule
+{% for row in table.rows %}
+{% for cell in row %}{{ cell }}{% if not loop.last %} & {% endif %}{% endfor %} \\
+{% endfor %}
+\bottomrule
+\end{tabularx}
+\end{table}
+{% endfor %}
+
+\vspace{1em}
+{% endfor %}
+
+\newpage
+\begin{thebibliography}{99}
+{% for ref in references %}
+\bibitem{ {{- loop.index -}} } {{ ref.authors }}, \textit{ {{- ref.title -}} }, {{ ref.venue }}{% if ref.venue %}, {% endif %}{{ ref.year }}.
+{% endfor %}
+\end{thebibliography}
+
+\end{document}
