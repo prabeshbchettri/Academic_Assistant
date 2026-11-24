@@ -18,7 +18,7 @@ word_limits:
     references: { min: 10, max: 200 }
 
 formatting:
-  font: "Liberation Serif"
+  font: "Times New Roman"
   font_size: 11
   line_spacing: 1.15
   margins_inches: { top: 1.0, bottom: 1.0, left: 1.0, right: 1.0 }

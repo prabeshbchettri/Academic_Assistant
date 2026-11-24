@@ -22,6 +22,7 @@ DOCUMENT_TYPES: dict[str, str] = {
 class StudentProfile(BaseModel):
     full_name: str = ""
     roll_number: str = ""
+    group: str = ""
     program: str = "B.E."
     department: str = ""
     semester: str = ""
@@ -38,11 +39,16 @@ class DocumentDefaults(BaseModel):
     include_front_page: bool = True
     include_toc: bool = True
     citation_style: str = "IEEE"
-    font_family: str = "Liberation Serif"
+    font_family: str = "Times New Roman"
     font_size: int = 11
     line_spacing: float = 1.15
     margin_inches: float = 1.0
-    logo_path: str = ""
+    logo_path: str = str(
+        Path(__file__).resolve().parent.parent
+        / "document"
+        / "assets"
+        / "tu_logo.png"
+    )
     format_notes: str = ""
 
 

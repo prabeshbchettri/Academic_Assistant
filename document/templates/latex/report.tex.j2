@@ -1,69 +1,248 @@
-\documentclass[11pt,a4paper]{article}
+% IOE Pulchowk Campus Academic Report Template
+\documentclass[12pt,a4paper]{article}
 
-\usepackage[utf8]{inputenc}
-\usepackage[margin=1in]{geometry}
+% ── Fonts (XeLaTeX) ───────────────────────────────────────────────────────────
+\usepackage{fontspec}
+\setmainfont{Times New Roman}[
+  BoldFont     = {Times New Roman Bold},
+  ItalicFont   = {Times New Roman Italic},
+  BoldItalicFont = {Times New Roman Bold Italic}
+]
+\setmonofont{Liberation Mono}[Scale=0.88]
+
+% ── Page layout ──────────────────────────────────────────────────────────────
+\usepackage[
+  top=1in, bottom=1in,
+  left=1.25in, right=1in,
+  headheight=15pt
+]{geometry}
+
+% ── Line spacing ─────────────────────────────────────────────────────────────
 \usepackage{setspace}
-\setstretch{1.15}
+\setstretch{1.25}
+
+% ── Core packages ────────────────────────────────────────────────────────────
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs}
 \usepackage{tabularx}
+\usepackage{longtable}
 \usepackage{graphicx}
 \usepackage{caption}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{microtype}
+
+% ── Colors ───────────────────────────────────────────────────────────────────
+\definecolor{ioeblue}{RGB}{27,54,93}
+\definecolor{ioegold}{RGB}{180,145,80}
+\definecolor{textgray}{RGB}{80,80,80}
+\definecolor{linkblue}{RGB}{30,80,160}
+
+% ── Hyperlinks ───────────────────────────────────────────────────────────────
 \usepackage{hyperref}
 \hypersetup{
-    colorlinks=true,
-    linkcolor=blue!70!black,
-    citecolor=blue!70!black,
-    urlcolor=blue!70!black
+  colorlinks=true,
+  linkcolor=linkblue,
+  citecolor=linkblue,
+  urlcolor=linkblue,
+  bookmarksnumbered=true,
+  pdfborder={0 0 0}
 }
 
-\title{\textbf{ {{- title -}} }}
-\author{ {{- author | default("Academic Assistant") -}} }
-\date{ {{- date | default("2026") -}} }
+% ── Section styling ──────────────────────────────────────────────────────────
+\usepackage{titlesec}
+\titleformat{\section}
+  {\large\bfseries\color{ioeblue}}
+  {\thesection.}{0.5em}{}
+  [\vspace{-0.4em}\noindent{\color{ioegold}\rule{\linewidth}{0.6pt}}]
+\titleformat{\subsection}
+  {\normalsize\bfseries\color{ioeblue}}
+  {\thesubsection}{0.5em}{}
+\titleformat{\subsubsection}
+  {\normalsize\bfseries}
+  {\thesubsubsection}{0.5em}{}
 
+\titlespacing*{\section}{0pt}{1.2em}{0.6em}
+\titlespacing*{\subsection}{0pt}{0.8em}{0.3em}
+\titlespacing*{\subsubsection}{0pt}{0.6em}{0.2em}
+
+% ── Paragraph style ──────────────────────────────────────────────────────────
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.5em}
+\setlength{\emergencystretch}{1.5em}
+
+% ── List style ───────────────────────────────────────────────────────────────
+\setlist[itemize]{noitemsep, topsep=0.3em, partopsep=0pt, leftmargin=1.5em}
+\setlist[enumerate]{noitemsep, topsep=0.3em, partopsep=0pt, leftmargin=1.5em}
+
+% ── Header / Footer ──────────────────────────────────────────────────────────
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+%% if course
+\fancyhead[L]{\small\itshape\color{textgray} \VAR{course}}
+\fancyhead[R]{\small\color{textgray} \VAR{title}}
+%% else
+\fancyhead[L]{\small\itshape\color{textgray} \VAR{title}}
+%% endif
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \fancyfoot[C]{\small\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+}
+
+% ── Table of contents style ──────────────────────────────────────────────────
+\renewcommand{\contentsname}{\color{ioeblue}Table of Contents}
+
+%─────────────────────────────────────────────────────────────────────────────
 \begin{document}
 
-\maketitle
+\BLOCK{ if front_page }
+% ── FRONT PAGE ───────────────────────────────────────────────────────────────
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{center}
 
-{% if abstract %}
-\begin{abstract}
-{{ abstract }}
-\end{abstract}
-\vspace{1em}
-{% endif %}
+\vspace*{0.3cm}
 
+% Logo
+\BLOCK{ if front_page.logo_path }
+\IfFileExists{\VAR{front_page.logo_path}}{%
+  \includegraphics[width=2.1cm]{\VAR{front_page.logo_path}}\\[0.4cm]%
+}{\vspace{0.5cm}}
+\BLOCK{ else }
+\vspace{0.5cm}
+\BLOCK{ endif }
+
+% University hierarchy
+{\large\bfseries\color{ioeblue} \VAR{front_page.university}}\\[0.15cm]
+{\LARGE\bfseries\color{ioeblue} Institute of Engineering}\\[0.1cm]
+{\large \VAR{front_page.campus}}\\[0.08cm]
+\BLOCK{ if front_page.department }
+{\normalsize\itshape \VAR{front_page.department}}\\[0.05cm]
+\BLOCK{ endif }
+
+{\color{ioegold}\rule{0.88\textwidth}{1.2pt}}\\[0.6cm]
+
+% Document type
+{\normalsize\bfseries\color{ioeblue} \MakeUppercase{\VAR{front_page.document_type}}}\\[0.5cm]
+
+% Title
+{\Huge\bfseries\color{ioeblue} \VAR{front_page.title}}\\[0.3cm]
+
+\BLOCK{ if front_page.subtitle }
+{\large\itshape\color{textgray} \VAR{front_page.subtitle}}\\[0.2cm]
+\BLOCK{ endif }
+\BLOCK{ if front_page.course }
+{\normalsize\itshape \VAR{front_page.course}}\\[0.2cm]
+\BLOCK{ endif }
+
+\vfill
+
+% Two-column submitted-by / submitted-to
+\begin{minipage}[t]{0.46\textwidth}
+\raggedright\setstretch{1.4}
+{\bfseries Submitted By:}\\[0.2cm]
+\BLOCK{ if front_page.submitted_by }Name: \VAR{front_page.submitted_by}\\
+\BLOCK{ endif }
+\BLOCK{ if front_page.roll_number }Roll No.: \VAR{front_page.roll_number}\\
+\BLOCK{ endif }
+\BLOCK{ if front_page.group }Group: \VAR{front_page.group}\\
+\BLOCK{ endif }
+\BLOCK{ if front_page.program }Program: \VAR{front_page.program}\\
+\BLOCK{ endif }
+\BLOCK{ if front_page.semester }Semester: \VAR{front_page.semester}\\
+\BLOCK{ endif }
+\BLOCK{ if front_page.section }Section: \VAR{front_page.section}\\
+\BLOCK{ endif }
+\end{minipage}
+\hfill
+\BLOCK{ if front_page.submitted_to or front_page.department }
+\begin{minipage}[t]{0.46\textwidth}
+\raggedright\setstretch{1.4}
+{\bfseries Submitted To:}\\[0.2cm]
+\BLOCK{ if front_page.submitted_to }\VAR{front_page.submitted_to}\\
+\BLOCK{ endif }
+\BLOCK{ if front_page.department and front_page.department != front_page.submitted_to }
+{\small \VAR{front_page.department}}\\
+\BLOCK{ endif }
+\VAR{front_page.campus}\\
+\end{minipage}
+\BLOCK{ endif }
+
+\vspace{1.2cm}
+{\color{ioeblue}\rule{0.5\textwidth}{0.4pt}}\\[0.3cm]
+{\normalsize \VAR{front_page.date}}
+
+\end{center}
+\end{titlepage}
+\BLOCK{ else }
+% ── Simple title block (no front page) ───────────────────────────────────────
+\begin{center}
+{\LARGE\bfseries\color{ioeblue} \VAR{title}}\\[0.4cm]
+\BLOCK{ if course }{\large\itshape \VAR{course}}\\[0.2cm]\BLOCK{ endif }
+{\normalsize \VAR{author}\quad|\quad \VAR{date}}
+\end{center}
+\vspace{0.5em}
+\noindent{\color{ioegold}\rule{\linewidth}{1pt}}
+\vspace{0.8em}
+\BLOCK{ endif }
+
+% ── Abstract ─────────────────────────────────────────────────────────────────
+\BLOCK{ if abstract }
+\begin{center}
+\begin{minipage}{0.88\textwidth}
+\small\itshape\setstretch{1.2}
+\textbf{Abstract:} \VAR{abstract}
+\end{minipage}
+\end{center}
+\vspace{0.8em}
+\BLOCK{ endif }
+
+% ── Table of Contents ────────────────────────────────────────────────────────
+\BLOCK{ if include_toc }
 \tableofcontents
 \newpage
+\BLOCK{ endif }
 
-{% for section in sections %}
-\section{ {{- section.heading -}} }
+% ── Body sections ────────────────────────────────────────────────────────────
+\BLOCK{ for section in sections }
+\section{\VAR{section.heading}}
 
-{{ section.body_latex }}
+\VAR{section.body_latex}
 
-{% for table in section.tables %}
-\begin{table}[h!]
+\BLOCK{ for table in section.tables }
+\begin{table}[H]
 \centering
-\caption{ {{- table.caption -}} }
-\begin{tabularx}{\textwidth}{ {% for _ in table.headers %}X{% endfor %} }
+\small
+\caption{\VAR{table.caption}}
+\begin{tabularx}{\textwidth}{ \BLOCK{ for _ in table.headers }X\BLOCK{ endfor } }
 \toprule
-{% for h in table.headers %}\textbf{ {{- h -}} }{% if not loop.last %} & {% endif %}{% endfor %} \\
+\BLOCK{ for h in table.headers }\textbf{\VAR{h}}\BLOCK{ if not loop.last } & \BLOCK{ endif }\BLOCK{ endfor } \\
 \midrule
-{% for row in table.rows %}
-{% for cell in row %}{{ cell }}{% if not loop.last %} & {% endif %}{% endfor %} \\
-{% endfor %}
+\BLOCK{ for row in table.rows }
+\BLOCK{ for cell in row }\VAR{cell}\BLOCK{ if not loop.last } & \BLOCK{ endif }\BLOCK{ endfor } \\
+\BLOCK{ endfor }
 \bottomrule
 \end{tabularx}
 \end{table}
-{% endfor %}
+\BLOCK{ endfor }
 
-\vspace{1em}
-{% endfor %}
+\BLOCK{ endfor }
 
+% ── References ───────────────────────────────────────────────────────────────
+\BLOCK{ if references }
 \newpage
 \begin{thebibliography}{99}
-{% for ref in references %}
-\bibitem{ {{- loop.index -}} } {{ ref.authors }}, \textit{ {{- ref.title -}} }, {{ ref.venue }}{% if ref.venue %}, {% endif %}{{ ref.year }}.
-{% endfor %}
+\itemsep=2pt
+\BLOCK{ for ref in references }
+\bibitem{\VAR{loop.index}} \VAR{ref.authors}\BLOCK{ if ref.authors }, \BLOCK{ endif }\textit{\VAR{ref.title}}\BLOCK{ if ref.venue }, \VAR{ref.venue}\BLOCK{ endif }\BLOCK{ if ref.year }, \VAR{ref.year}\BLOCK{ endif }.
+\BLOCK{ endfor }
 \end{thebibliography}
+\BLOCK{ endif }
 
 \end{document}

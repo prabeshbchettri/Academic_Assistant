@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -31,6 +32,31 @@ class FigureData(BaseModel):
     description: str = ""
 
 
+class FrontPage(BaseModel):
+    institution: str = "Institute of Engineering"
+    university: str = "Tribhuvan University"
+    campus: str = "Pulchowk Campus"
+    department: str = ""
+    document_type: str = "Academic Assignment"
+    title: str = ""
+    subtitle: str = ""
+    course: str = ""
+    submitted_by: str = ""
+    roll_number: str = ""
+    group: str = ""
+    program: str = ""
+    semester: str = ""
+    section: str = ""
+    submitted_to: str = ""
+    date: str = ""
+    logo_path: str = str(
+        Path(__file__).resolve().parent.parent
+        / "document"
+        / "assets"
+        / "tu_logo.png"
+    )
+
+
 class SectionDraft(BaseModel):
     heading: str
     body_markdown: str
@@ -52,10 +78,14 @@ class ReportContent(BaseModel):
     references: list[Citation] = Field(default_factory=list)
     appendix: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
+    front_page: FrontPage | None = None
+    document_type: str = "assignment"
+    include_toc: bool = True
     created_at: datetime = Field(default_factory=utc_now)
 
     def total_word_count(self) -> int:
-        return sum(s.word_count for s in self.sections) + (len(self.abstract.split()) if self.abstract else 0)
+        abstract_words = len(self.abstract.split()) if self.abstract else 0
+        return sum(s.word_count for s in self.sections) + abstract_words
 
     def get_section(self, heading: str) -> SectionDraft | None:
         for sec in self.sections:
