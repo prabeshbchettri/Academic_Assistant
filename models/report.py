@@ -36,7 +36,7 @@ class FrontPage(BaseModel):
     institution: str = "Institute of Engineering"
     university: str = "Tribhuvan University"
     campus: str = "Pulchowk Campus"
-    department: str = ""
+    department: str = "Department of Electronics & Computer Engineering"
     document_type: str = "Academic Assignment"
     title: str = ""
     subtitle: str = ""

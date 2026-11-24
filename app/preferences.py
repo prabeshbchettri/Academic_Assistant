@@ -24,7 +24,7 @@ class StudentProfile(BaseModel):
     roll_number: str = ""
     group: str = ""
     program: str = "B.E."
-    department: str = ""
+    department: str = "Department of Electronics & Computer Engineering"
     semester: str = ""
     section: str = ""
     email: str = ""
@@ -35,7 +35,7 @@ class DocumentDefaults(BaseModel):
     institution: str = "Institute of Engineering, Pulchowk Campus"
     university: str = "Tribhuvan University"
     campus: str = "Pulchowk Campus"
-    department: str = ""
+    department: str = "Department of Electronics & Computer Engineering"
     include_front_page: bool = True
     include_toc: bool = True
     citation_style: str = "IEEE"

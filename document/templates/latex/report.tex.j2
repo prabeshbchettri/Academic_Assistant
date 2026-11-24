@@ -153,24 +153,13 @@
 \BLOCK{ endif }
 \BLOCK{ if front_page.group }Group: \VAR{front_page.group}\\
 \BLOCK{ endif }
-\BLOCK{ if front_page.program }Program: \VAR{front_page.program}\\
-\BLOCK{ endif }
-\BLOCK{ if front_page.semester }Semester: \VAR{front_page.semester}\\
-\BLOCK{ endif }
-\BLOCK{ if front_page.section }Section: \VAR{front_page.section}\\
-\BLOCK{ endif }
 \end{minipage}
 \hfill
-\BLOCK{ if front_page.submitted_to or front_page.department }
+\BLOCK{ if front_page.department or front_page.submitted_to }
 \begin{minipage}[t]{0.46\textwidth}
 \raggedright\setstretch{1.4}
 {\bfseries Submitted To:}\\[0.2cm]
-\BLOCK{ if front_page.submitted_to }\VAR{front_page.submitted_to}\\
-\BLOCK{ endif }
-\BLOCK{ if front_page.department and front_page.department != front_page.submitted_to }
-{\small \VAR{front_page.department}}\\
-\BLOCK{ endif }
-\VAR{front_page.campus}\\
+\VAR{front_page.department or front_page.submitted_to}\\
 \end{minipage}
 \BLOCK{ endif }
 

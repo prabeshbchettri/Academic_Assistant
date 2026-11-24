@@ -268,7 +268,7 @@ class LatexGenerator:
                 "section": escape_latex(page.section),
                 "submitted_to": escape_latex(page.submitted_to),
                 "date": escape_latex(page.date),
-                "logo_path": escape_latex(page.logo_path.replace("\\", "/")),
+                "logo_path": page.logo_path.replace("\\", "/"),
             }
 
         return template.render(

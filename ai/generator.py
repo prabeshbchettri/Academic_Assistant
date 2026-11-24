@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
 from jinja2 import Template
@@ -11,7 +12,7 @@ from ai.llm.base import LLMProvider
 from ai.security import wrap_untrusted_data
 from configs.schema import CategoryConfig
 from models.assignment import NormalizedInput
-from models.report import Citation, ReportContent, SectionDraft
+from models.report import Citation, FrontPage, ReportContent, SectionDraft
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +36,16 @@ class SectionGenerator:
         sys_prompt_path = root_dir / config.prompts.system
         gen_prompt_path = root_dir / config.prompts.generation
 
-        system_prompt = sys_prompt_path.read_text(encoding="utf-8") if sys_prompt_path.exists() else "You are an academic assistant."
-        generation_template = gen_prompt_path.read_text(encoding="utf-8") if gen_prompt_path.exists() else "{{ assignment_text }}"
+        system_prompt = (
+            sys_prompt_path.read_text(encoding="utf-8")
+            if sys_prompt_path.exists()
+            else "You are an academic assistant."
+        )
+        generation_template = (
+            gen_prompt_path.read_text(encoding="utf-8")
+            if gen_prompt_path.exists()
+            else "{{ assignment_text }}"
+        )
 
         limits = config.word_limits.sections.get(section_name)
         min_words = limits.min if limits else 100
@@ -44,6 +53,11 @@ class SectionGenerator:
 
         prior_summary = "\n".join(f"- {s.heading}: {s.word_count} words" for s in prior_sections)
         wrapped_assignment, _ = wrap_untrusted_data(normalized.cleaned_text)
+        doc_prefs = normalized.metadata.get("document_preferences", {}) or {}
+        format_notes = doc_prefs.get("format_notes", "") or ""
+        assignment_notes = normalized.metadata.get("assignment_notes", "") or ""
+        revision_feedback = normalized.metadata.get("revision_feedback", "") or ""
+        document_type = doc_prefs.get("document_type") or config.display_name
 
         template = Template(generation_template)
         user_prompt = template.render(
@@ -57,6 +71,10 @@ class SectionGenerator:
             references_context=references_context,
             prior_sections_summary=prior_summary,
             feedback=feedback,
+            document_type=document_type,
+            format_notes=format_notes,
+            assignment_notes=assignment_notes,
+            revision_feedback=revision_feedback,
         )
 
         draft = self.llm.generate_structured(SectionDraft, system_prompt, user_prompt)
@@ -78,11 +96,17 @@ class SectionGenerator:
         retrieved_chunks: list[str] | None = None,
     ) -> ReportContent:
         formulas = extract_and_evaluate_formulas(normalized.cleaned_text)
-        calc_summary = "\n".join(f"- {f['variable']} = {f['expression']} => {f['value']}" for f in formulas)
+        calc_summary = "\n".join(
+            f"- {f['variable']} = {f['expression']} => {f['value']}" for f in formulas
+        )
         ref_context = "\n".join(retrieved_chunks or [])
 
         sections: list[SectionDraft] = []
-        target_sections = [s for s in config.required_sections if s.lower() not in ("references", "bibliography")]
+        target_sections = [
+            s
+            for s in config.required_sections
+            if s.lower() not in ("references", "bibliography")
+        ]
         for idx, sec in enumerate(target_sections, 1):
             logger.info("Generating section '%s' (%d/%d)...", sec, idx, len(target_sections))
             draft = self.generate_section(
@@ -114,15 +138,64 @@ class SectionGenerator:
             ),
         ]
 
-        abstract_sec = next((s.body_markdown for s in sections if s.heading.lower() == "abstract"), "")
+        abstract_sec = next(
+            (s.body_markdown for s in sections if s.heading.lower() == "abstract"),
+            "",
+        )
+
+        metadata = normalized.metadata or {}
+        doc_prefs = metadata.get("document_preferences", {}) or {}
+        student = metadata.get("student_profile", {}) or {}
+        submission_date = metadata.get("submission_date") or datetime.now().strftime("%B %d, %Y")
+        document_type = doc_prefs.get("document_type") or config.display_name
+
+        front_page = None
+        if doc_prefs.get("include_front_page", True):
+            department_name = (
+                doc_prefs.get("department")
+                or student.get("department")
+                or "Department of Electronics & Computer Engineering"
+            )
+            front_page = FrontPage(
+                institution=doc_prefs.get("institution")
+                or "Institute of Engineering, Pulchowk Campus",
+                university=doc_prefs.get("university") or "Tribhuvan University",
+                campus=doc_prefs.get("campus") or "Pulchowk Campus",
+                department=department_name,
+                document_type=document_type,
+                title=normalized.title,
+                course=normalized.course_name or "",
+                submitted_by=student.get("full_name") or "Student",
+                roll_number=student.get("roll_number", ""),
+                group=student.get("group", ""),
+                program=student.get("program", ""),
+                semester=student.get("semester", ""),
+                section=student.get("section", ""),
+                submitted_to=metadata.get("submitted_to") or department_name,
+                date=submission_date,
+                logo_path=doc_prefs.get("logo_path") or str(
+                    Path(__file__).resolve().parent.parent
+                    / "document"
+                    / "assets"
+                    / "tu_logo.png"
+                ),
+            )
 
         return ReportContent(
             title=normalized.title,
             course=normalized.course_name or "Academic Coursework",
-            author="Student",
-            date="2026",
-            institution="Academic Institution",
+            author=student.get("full_name") or "Student",
+            date=submission_date,
+            institution=doc_prefs.get("institution")
+            or "Institute of Engineering, Pulchowk Campus",
             abstract=abstract_sec,
             sections=sections,
             references=default_refs,
+            front_page=front_page,
+            document_type=document_type,
+            include_toc=bool(doc_prefs.get("include_toc", True)),
+            metadata={
+                "document_preferences": doc_prefs,
+                "student_profile": student,
+            },
         )
