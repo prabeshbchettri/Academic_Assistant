@@ -17,14 +17,15 @@ logger = logging.getLogger(__name__)
 
 class PdfExporter:
     """
-    Exports high-quality PDF using the best available engine in the fallback chain:
+    Exports high-quality PDF using the configured engine order:
     1. Tectonic (bundled or system)
-    2. XeLaTeX (system)
+    2. XeLaTeX / pdfLaTeX (system)
     3. LibreOffice headless
     """
 
     def __init__(self, latex_generator: LatexGenerator | None = None):
         self.latex_gen = latex_generator or LatexGenerator()
+        self.last_engine: str = "none"
 
     def export(
         self,
@@ -38,20 +39,55 @@ class PdfExporter:
         pdf_target = out_dir / "report.pdf"
         tex_target = out_dir / "report.tex"
 
-        # Generate LaTeX source
-        tex_source = self.latex_gen.render(report)
-        tex_target.write_text(tex_source, encoding="utf-8")
+        # Save human-readable LaTeX source with original path
+        tex_source_saved = self.latex_gen.render(report)
+        tex_target.write_text(tex_source_saved, encoding="utf-8")
 
-        # Try LaTeX engine first (Tectonic or XeLaTeX)
-        pdf_path = self._compile_with_tectonic(tex_source, pdf_target)
-        if not pdf_path:
-            pdf_path = self._compile_with_xelatex(tex_source, pdf_target)
+        logo_src: Path | None = None
+        if report.front_page and report.front_page.logo_path:
+            candidate = Path(report.front_page.logo_path)
+            if candidate.exists() and candidate.is_file():
+                logo_src = candidate
 
-        # Fallback to LibreOffice headless using docx if LaTeX compilation did not succeed
-        if not pdf_path:
-            pdf_path = self._compile_with_libreoffice(docx_path, out_dir)
+        # Use relative staged logo filename inside compilation temp dir to avoid path/space issues
+        staged_logo_name = f"ioe_logo{logo_src.suffix.lower()}" if logo_src else None
+        compile_tex = (
+            self.latex_gen.render(report, logo_override=staged_logo_name)
+            if staged_logo_name
+            else tex_source_saved
+        )
 
-        # Write metadata.json
+        preferred = settings.pdf_engine.strip().lower()
+        engine_chain = (
+            ["libreoffice", "tectonic", "xelatex"]
+            if preferred == "libreoffice"
+            else (
+                ["xelatex", "tectonic", "libreoffice"]
+                if "xelatex" in preferred
+                else ["tectonic", "xelatex", "libreoffice"]
+            )
+        )
+
+        pdf_path: Path | None = None
+        actual_engine = "none"
+        for engine_name in engine_chain:
+            if engine_name == "tectonic":
+                pdf_path = self._compile_with_tectonic(
+                    compile_tex, pdf_target, logo_src, staged_logo_name
+                )
+            elif engine_name == "xelatex":
+                pdf_path = self._compile_with_xelatex(
+                    compile_tex, pdf_target, logo_src, staged_logo_name
+                )
+            elif engine_name == "libreoffice":
+                pdf_path = self._compile_with_libreoffice(docx_path, out_dir)
+
+            if pdf_path and pdf_path.exists():
+                actual_engine = engine_name
+                break
+
+        self.last_engine = actual_engine
+
         meta_target = out_dir / "metadata.json"
         metadata = {
             "title": report.title,
@@ -59,24 +95,38 @@ class PdfExporter:
             "created_at": datetime.now(UTC).isoformat(),
             "docx_path": str(docx_path),
             "pdf_path": str(pdf_path) if pdf_path else None,
-            "engine": "tectonic/xelatex" if pdf_path and pdf_path.exists() else "libreoffice",
+            "engine": actual_engine,
         }
         meta_target.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
         return pdf_path
 
-    def _compile_with_tectonic(self, tex_source: str, target_pdf: Path) -> Path | None:
+    @staticmethod
+    def _stage_logo(
+        tmpdir: str, logo_src: Path | None, staged_name: str | None
+    ) -> None:
+        if logo_src and staged_name and logo_src.exists():
+            shutil.copy2(logo_src, Path(tmpdir) / staged_name)
+
+    def _compile_with_tectonic(
+        self,
+        tex_source: str,
+        target_pdf: Path,
+        logo_src: Path | None = None,
+        staged_logo_name: str | None = None,
+    ) -> Path | None:
         tectonic_bin = shutil.which("tectonic") or settings.tectonic_path
         if not tectonic_bin:
             return None
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            self._stage_logo(tmpdir, logo_src, staged_logo_name)
             tex_file = Path(tmpdir) / "document.tex"
             tex_file.write_text(tex_source, encoding="utf-8")
 
             cmd = [tectonic_bin, "--untrusted", "-o", tmpdir, str(tex_file)]
             try:
-                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+                result = subprocess.run(cmd, capture_output=True, timeout=60)
                 produced_pdf = Path(tmpdir) / "document.pdf"
                 if result.returncode == 0 and produced_pdf.exists():
                     shutil.copy2(produced_pdf, target_pdf)
@@ -87,20 +137,33 @@ class PdfExporter:
 
         return None
 
-    def _compile_with_xelatex(self, tex_source: str, target_pdf: Path) -> Path | None:
+    def _compile_with_xelatex(
+        self,
+        tex_source: str,
+        target_pdf: Path,
+        logo_src: Path | None = None,
+        staged_logo_name: str | None = None,
+    ) -> Path | None:
         xelatex_bin = shutil.which("xelatex") or shutil.which("pdflatex")
         if not xelatex_bin:
             return None
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            self._stage_logo(tmpdir, logo_src, staged_logo_name)
             tex_file = Path(tmpdir) / "document.tex"
             tex_file.write_text(tex_source, encoding="utf-8")
 
-            cmd = [xelatex_bin, "-interaction=nonstopmode", "-output-directory", tmpdir, str(tex_file)]
+            cmd = [
+                xelatex_bin,
+                "-interaction=nonstopmode",
+                "-output-directory",
+                tmpdir,
+                str(tex_file),
+            ]
             try:
-                # Run twice for table of contents
-                subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=40)
-                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=40)
+                # Run twice so TOC and page numbers settle
+                subprocess.run(cmd, capture_output=True, timeout=40)
+                subprocess.run(cmd, capture_output=True, timeout=40)
                 produced_pdf = Path(tmpdir) / "document.pdf"
                 if produced_pdf.exists():
                     shutil.copy2(produced_pdf, target_pdf)
@@ -126,7 +189,7 @@ class PdfExporter:
             str(docx_path),
         ]
         try:
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+            subprocess.run(cmd, capture_output=True, timeout=60)
             expected_pdf = output_dir / f"{docx_path.stem}.pdf"
             if expected_pdf.exists():
                 logger.info("Compiled PDF using LibreOffice headless at %s", expected_pdf)

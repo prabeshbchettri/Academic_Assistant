@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class DecisionType(str, Enum):
+class DecisionType(StrEnum):
     APPROVE = "approve"
     EDIT = "edit"
     REGENERATE = "regenerate"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -11,13 +11,13 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-class Category(str, Enum):
+class Category(StrEnum):
     ASSIGNMENT = "assignment"
     INITIAL_LAB = "initial_lab"
     FINAL_LAB = "final_lab"
 
 
-class SourceType(str, Enum):
+class SourceType(StrEnum):
     MANUAL = "manual"
     FILE = "file"
     CLASSROOM = "classroom"

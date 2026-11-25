@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock
+
 from integrations.gmail.client import search_messages
 
 

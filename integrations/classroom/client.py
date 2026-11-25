@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
 from googleapiclient.discovery import build
@@ -72,13 +73,45 @@ def list_coursework_materials(service: Any, course_id: str) -> list[dict[str, An
     return items
 
 
-def download_drive_file(drive_file_id: str, destination_path: str, scopes: Iterable[str] | None = None) -> bool:
-    """
-    Downloads a Google Drive attachment file by ID.
-    """
+def extract_materials_summary(item: dict[str, Any]) -> str:
+    """Formats attached Classroom materials (Drive files, links, videos) into readable context."""
+    materials = item.get("materials") or []
+    if not materials:
+        return ""
+
+    lines: list[str] = ["Attached Classroom Materials:"]
+    for mat in materials:
+        if not isinstance(mat, dict):
+            continue
+        if "driveFile" in mat:
+            df = (mat.get("driveFile") or {}).get("driveFile") or {}
+            title = df.get("title") or "Drive Attachment"
+            link = df.get("alternateLink") or ""
+            lines.append(f"- [Drive File] {title}" + (f" ({link})" if link else ""))
+        elif "link" in mat:
+            lnk = mat.get("link") or {}
+            title = lnk.get("title") or lnk.get("url") or "External Link"
+            url = lnk.get("url") or ""
+            lines.append(f"- [Link] {title}: {url}")
+        elif "youtubeVideo" in mat:
+            yt = mat.get("youtubeVideo") or {}
+            lines.append(f"- [Video] {yt.get('title', 'YouTube')} ({yt.get('alternateLink', '')})")
+        elif "form" in mat:
+            form = mat.get("form") or {}
+            lines.append(f"- [Form] {form.get('title', 'Google Form')} ({form.get('formUrl', '')})")
+
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def download_drive_file(
+    drive_file_id: str,
+    destination_path: str,
+    scopes: Iterable[str] | None = None,
+) -> bool:
+    """Downloads a Google Drive attachment file by ID when Drive scope is authorized."""
     import io
+
     from googleapiclient.http import MediaIoBaseDownload
-    from pathlib import Path
 
     try:
         credentials = get_credentials(scopes or STUDENT_SCOPES)
@@ -88,7 +121,7 @@ def download_drive_file(drive_file_id: str, destination_path: str, scopes: Itera
         downloader = MediaIoBaseDownload(fh, request)
         done = False
         while not done:
-            status, done = downloader.next_chunk()
+            _status, done = downloader.next_chunk()
 
         dest = Path(destination_path)
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -98,7 +131,3 @@ def download_drive_file(drive_file_id: str, destination_path: str, scopes: Itera
     except Exception as exc:
         logger.warning("Failed to download Drive attachment %s: %s", drive_file_id, exc)
         return False
-
-
-
-

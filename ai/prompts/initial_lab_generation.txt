@@ -6,5 +6,30 @@ Experimental Prompt & Observations:
 Calculations / Formulas computed:
 {{ calculated_data }}
 
+{% if references_context %}
+Retrieved Course Materials:
+{{ references_context }}
+{% endif %}
+{% if available_references %}
+Available Grounded Citation Keys (ONLY cite from this list):
+{{ available_references }}
+{% endif %}
+
 Target Word Count: {{ min_words }} - {{ max_words }} words.
+Document Type: {{ document_type }}
+Student Formatting Notes:
+{{ format_notes }}
+
+Additional Student Notes:
+{{ assignment_notes }}
+{% if feedback %}
+Reviewer Feedback to address:
+{{ feedback }}
+{% endif %}
+
+{% if revision_feedback %}
+Revision Feedback to address:
+{{ revision_feedback }}
+{% endif %}
+
 Output format: structured section with Markdown body, tables, and citations.

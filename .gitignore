@@ -5,8 +5,10 @@
 credentials.json
 token.json
 academic.md
+new_session.md
 *.pem
 *.key
+*.tmp
 
 # Python
 __pycache__/
@@ -32,12 +34,14 @@ storage/outputs/
 storage/rag/
 storage/credentials/
 storage/logs/
+storage/preferences.json
 *.sqlite
 *.sqlite3
 *.db
 *.db-wal
 *.db-shm
 *.log
+.freebuff/
 
 # OS / editor
 .DS_Store

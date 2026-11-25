@@ -5,11 +5,12 @@ from pathlib import Path
 
 from jinja2 import Environment
 
-from document.latex_escape import escape_latex
+from document.latex_escape import escape_latex, sanitize_math
 from models.report import ReportContent
 
 _MISSING_RE = re.compile(r"\[\[MISSING:\s*([^\]]+)\]\]")
 _TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
+_INLINE_MATH_RE = re.compile(r"\$([^$\n]+?)\$")
 
 
 def _prepare_text(text: str) -> str:
@@ -19,19 +20,43 @@ def _prepare_text(text: str) -> str:
     )
 
 
+def _is_likely_math(expr: str) -> bool:
+    """Distinguishes LaTeX inline math ($x^2$, $V = IR$) from currency ($100 budget)."""
+    if not expr or expr[0].isspace() or expr[-1].isspace():
+        return False
+    # Pure number or price like "$100" or "$49.99" is currency, not math
+    if re.fullmatch(r"\d+(?:[.,]\d+)?(?:\s*(?:k|m|b))?", expr.strip(), re.IGNORECASE):
+        return False
+    # Check if currency phrase like "100 budget"
+    return not (re.match(r"^\d", expr.strip()) and not any(op in expr for op in "=+-*/^_\\<>"))
+
+
 def _inline(text: str) -> str:
-    """Escape text and convert the supported inline Markdown to LaTeX."""
+    """Escape prose while preserving inline Markdown (`code`, **bold**, *italic*) and $math$."""
     text = _prepare_text(text)
-    parts = re.split(r"(`[^`]+`)", text)
+    tokens = re.split(
+        r"(`[^`]+`|\$\d+(?:[.,]\d+)?(?=\s|[.,;:!?)]|$)|\$(?!\s)[^$\n]+?(?<!\s)\$)",
+        text,
+    )
     rendered: list[str] = []
-    for part in parts:
-        if part.startswith("`") and part.endswith("`") and len(part) >= 2:
-            rendered.append(r"\texttt{" + escape_latex(part[1:-1]) + "}")
+
+    for token in tokens:
+        if not token:
             continue
-        escaped = escape_latex(part)
+        if token.startswith("`") and token.endswith("`") and len(token) >= 2:
+            rendered.append(r"\texttt{" + escape_latex(token[1:-1]) + "}")
+            continue
+        if token.startswith("$") and token.endswith("$") and len(token) >= 3:
+            inner = token[1:-1]
+            if _is_likely_math(inner):
+                rendered.append(f"${sanitize_math(inner)}$")
+                continue
+
+        escaped = escape_latex(token)
         escaped = re.sub(r"\*\*([^*]+)\*\*", r"\\textbf{\1}", escaped)
         escaped = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\\textit{\1}", escaped)
         rendered.append(escaped)
+
     return "".join(rendered)
 
 
@@ -54,30 +79,51 @@ def _render_table(header_line: str, row_lines: list[str]) -> list[str]:
     rows = [_split_row(line) for line in row_lines]
     column_count = max([len(header), *(len(row) for row in rows)])
 
-    def padded(cells: list[str]) -> list[str]:
-        return cells + [""] * (column_count - len(cells))
+    def normalized(cells: list[str]) -> list[str]:
+        return (cells + [""] * column_count)[:column_count]
 
     out = [
-        r"\begin{table}[h!]",
+        r"\begin{table}[H]",
         r"\centering",
         r"\small",
         r"\begin{tabularx}{\textwidth}{" + " ".join(["X"] * column_count) + "}",
         r"\toprule",
-        " & ".join(r"\textbf{" + _inline(cell) + "}" for cell in padded(header)) + r" \\",
+        " & ".join(r"\textbf{" + _inline(cell) + "}" for cell in normalized(header)) + r" \\",
         r"\midrule",
     ]
     for row in rows:
-        out.append(" & ".join(_inline(cell) for cell in padded(row)) + r" \\")
+        out.append(" & ".join(_inline(cell) for cell in normalized(row)) + r" \\")
     out.extend([r"\bottomrule", r"\end{tabularx}", r"\end{table}", ""])
     return out
 
 
+def _render_code_block(code_lines: list[str]) -> list[str]:
+    rendered_lines: list[str] = []
+    for raw_line in code_lines:
+        stripped_leading = len(raw_line) - len(raw_line.lstrip(" "))
+        indent = r"\ " * min(stripped_leading, 16)
+        escaped_body = escape_latex(raw_line.lstrip(" "))
+        rendered_lines.append(f"{indent}{escaped_body}")
+    joined = "\\\\\n".join(rendered_lines) if rendered_lines else r"\ "
+    return [
+        r"\begin{quote}",
+        r"\ttfamily\footnotesize\raggedright",
+        joined,
+        r"\end{quote}",
+        "",
+    ]
+
+
 def markdown_to_latex(text: str) -> str:
-    """Converts a safe subset of Markdown into LaTeX formatted commands."""
+    """Converts Markdown (headings, lists, tables, fenced code blocks, math) to LaTeX."""
     lines = text.strip().split("\n")
     output: list[str] = []
     paragraph: list[str] = []
     list_kind: str | None = None
+    in_code_block = False
+    code_lines: list[str] = []
+    in_display_math = False
+    math_lines: list[str] = []
 
     def close_list() -> None:
         nonlocal list_kind
@@ -104,7 +150,65 @@ def markdown_to_latex(text: str) -> str:
 
     index = 0
     while index < len(lines):
-        stripped = lines[index].strip()
+        raw_line = lines[index]
+        stripped = raw_line.strip()
+
+        if stripped.startswith("```"):
+            flush_paragraph()
+            close_list()
+            if in_code_block:
+                output.extend(_render_code_block(code_lines))
+                code_lines.clear()
+                in_code_block = False
+            else:
+                in_code_block = True
+            index += 1
+            continue
+
+        if in_code_block:
+            code_lines.append(raw_line.rstrip())
+            index += 1
+            continue
+
+        # Single-line $$ ... $$ display math
+        if stripped.startswith("$$") and stripped.endswith("$$") and len(stripped) > 4:
+            flush_paragraph()
+            close_list()
+            expr = sanitize_math(stripped[2:-2].strip())
+            output.extend([r"\[", expr, r"\]", ""])
+            index += 1
+            continue
+
+        # Multi-line $$ ... $$ display math
+        if stripped.startswith("$$"):
+            flush_paragraph()
+            close_list()
+            if in_display_math:
+                expr = sanitize_math("\n".join(math_lines).strip())
+                output.extend([r"\[", expr, r"\]", ""])
+                math_lines.clear()
+                in_display_math = False
+            else:
+                in_display_math = True
+                remainder = stripped[2:].strip()
+                if remainder:
+                    math_lines.append(remainder)
+            index += 1
+            continue
+
+        if in_display_math:
+            if stripped.endswith("$$"):
+                tail = stripped[:-2].strip()
+                if tail:
+                    math_lines.append(tail)
+                expr = sanitize_math("\n".join(math_lines).strip())
+                output.extend([r"\[", expr, r"\]", ""])
+                math_lines.clear()
+                in_display_math = False
+            else:
+                math_lines.append(raw_line.strip())
+            index += 1
+            continue
 
         if not stripped:
             flush_paragraph()
@@ -184,9 +288,24 @@ def markdown_to_latex(text: str) -> str:
         paragraph.append(stripped)
         index += 1
 
+    if in_code_block and code_lines:
+        output.extend(_render_code_block(code_lines))
+    if in_display_math and math_lines:
+        output.extend([r"\[", sanitize_math("\n".join(math_lines).strip()), r"\]", ""])
+
     flush_paragraph()
     close_list()
     return "\n".join(output)
+
+
+def _split_institution_campus(institution: str, campus: str) -> tuple[str, str]:
+    inst = (institution or "").strip()
+    camp = (campus or "").strip()
+    if inst and camp and camp.lower() in inst.lower():
+        stripped = re.sub(r",?\s*" + re.escape(camp), "", inst, flags=re.IGNORECASE).strip(" ,")
+        if stripped:
+            return stripped, camp
+    return inst or "Institute of Engineering", camp
 
 
 class LatexGenerator:
@@ -200,9 +319,8 @@ class LatexGenerator:
             )
         self.template_path = template_path
 
-    def render(self, report: ReportContent) -> str:
+    def render(self, report: ReportContent, logo_override: str | None = None) -> str:
         template_content = self.template_path.read_text(encoding="utf-8")
-        # Use LaTeX-safe Jinja2 delimiters to avoid conflicts with LaTeX braces/percent
         env = Environment(
             block_start_string=r"\BLOCK{",
             block_end_string="}",
@@ -220,21 +338,29 @@ class LatexGenerator:
 
         rendered_sections = []
         for sec in report.sections:
+            rendered_tables = []
+            for table in sec.tables:
+                col_count = max(1, len(table.headers))
+                padded_rows = [
+                    [
+                        escape_latex(cell)
+                        for cell in (list(row) + [""] * col_count)[:col_count]
+                    ]
+                    for row in table.rows
+                ]
+                rendered_tables.append(
+                    {
+                        "caption": escape_latex(table.caption),
+                        "headers": [escape_latex(header) for header in table.headers],
+                        "rows": padded_rows,
+                    }
+                )
+
             rendered_sections.append(
                 {
                     "heading": escape_latex(sec.heading),
                     "body_latex": markdown_to_latex(sec.body_markdown),
-                    "tables": [
-                        {
-                            "caption": escape_latex(table.caption),
-                            "headers": [escape_latex(header) for header in table.headers],
-                            "rows": [
-                                [escape_latex(cell) for cell in row]
-                                for row in table.rows
-                            ],
-                        }
-                        for table in sec.tables
-                    ],
+                    "tables": rendered_tables,
                 }
             )
 
@@ -248,13 +374,24 @@ class LatexGenerator:
             for reference in report.references
         ]
 
+        doc_prefs = (report.metadata or {}).get("document_preferences", {}) or {}
+        font_family = str(doc_prefs.get("font_family") or "Times New Roman").strip()
+        raw_font_size = int(doc_prefs.get("font_size") or 12)
+        # Standard LaTeX article class supports 10pt, 11pt, 12pt cleanly
+        font_size = min((10, 11, 12), key=lambda pt: abs(pt - raw_font_size))
+        line_spacing = float(doc_prefs.get("line_spacing") or 1.25)
+        margin_val = float(doc_prefs.get("margin_inches") or 1.0)
+        margin_left = max(1.25, margin_val)
+
         front_page = None
         if report.front_page:
             page = report.front_page
+            inst_clean, camp_clean = _split_institution_campus(page.institution, page.campus)
+            effective_logo = logo_override if logo_override is not None else page.logo_path
             front_page = {
-                "institution": escape_latex(page.institution),
+                "institution": escape_latex(inst_clean),
                 "university": escape_latex(page.university),
-                "campus": escape_latex(page.campus),
+                "campus": escape_latex(camp_clean),
                 "department": escape_latex(page.department),
                 "document_type": escape_latex(page.document_type),
                 "title": escape_latex(page.title),
@@ -268,7 +405,7 @@ class LatexGenerator:
                 "section": escape_latex(page.section),
                 "submitted_to": escape_latex(page.submitted_to),
                 "date": escape_latex(page.date),
-                "logo_path": page.logo_path.replace("\\", "/"),
+                "logo_path": effective_logo.replace("\\", "/"),
             }
 
         return template.render(
@@ -281,4 +418,11 @@ class LatexGenerator:
             references=rendered_refs,
             front_page=front_page,
             include_toc=report.include_toc,
+            font_family=font_family,
+            font_size=font_size,
+            line_spacing=f"{line_spacing:.2f}",
+            margin_top=f"{margin_val:.2f}",
+            margin_bottom=f"{margin_val:.2f}",
+            margin_left=f"{margin_left:.2f}",
+            margin_right=f"{margin_val:.2f}",
         )

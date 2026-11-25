@@ -37,12 +37,20 @@ def test_docx_parser():
 
 
 def test_normalizer_and_deduplication():
-    raw1 = RawInput(source_type=SourceType.MANUAL, title="", raw_text="Title: Circuit Analysis\n\nMeasure voltage.")
+    raw1 = RawInput(
+        source_type=SourceType.MANUAL,
+        title="",
+        raw_text="Title: Circuit Analysis\n\nMeasure voltage.",
+    )
     norm1 = normalize_input(raw1)
     assert norm1.title == "Circuit Analysis"
     assert norm1.content_hash != ""
 
-    raw2 = RawInput(source_type=SourceType.MANUAL, title="", raw_text="  Title: Circuit Analysis \n\n  Measure voltage.  ")
+    raw2 = RawInput(
+        source_type=SourceType.MANUAL,
+        title="",
+        raw_text="  Title: Circuit Analysis \n\n  Measure voltage.  ",
+    )
     norm2 = normalize_input(raw2)
     # Deduplication hash must match despite whitespace variation
     assert norm1.content_hash == norm2.content_hash

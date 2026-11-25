@@ -8,6 +8,12 @@ QWidget {
     font-size: 13px;
 }
 
+/* Labels inherit the page colour; without this they paint a light box over
+   dark surfaces (sidebar) and white cards. */
+QLabel {
+    background: transparent;
+}
+
 QScrollArea {
     background: transparent;
     border: none;
@@ -108,6 +114,14 @@ QLabel#CardTitle {
 QLabel#Muted {
     color: #627D98;
     font-size: 12px;
+}
+
+QLabel#FieldLabel {
+    color: #829AB1;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
 }
 
 QLabel#StatLabel {
@@ -269,7 +283,10 @@ QPushButton#DangerButton:hover {
 QLineEdit,
 QTextEdit,
 QPlainTextEdit,
-QComboBox {
+QComboBox,
+QDateEdit,
+QSpinBox,
+QDoubleSpinBox {
     background-color: #FFFFFF;
     border: 1px solid #BCCCDC;
     border-radius: 7px;
@@ -281,7 +298,10 @@ QComboBox {
 QLineEdit:focus,
 QTextEdit:focus,
 QPlainTextEdit:focus,
-QComboBox:focus {
+QComboBox:focus,
+QDateEdit:focus,
+QSpinBox:focus,
+QDoubleSpinBox:focus {
     border: 1px solid #0F6CBD;
 }
 
@@ -299,6 +319,7 @@ QComboBox QAbstractItemView {
 }
 
 QCheckBox {
+    background: transparent;
     spacing: 8px;
     color: #334E68;
 }
@@ -362,6 +383,16 @@ QListWidget::item:selected {
 
 QListWidget::item:hover {
     background-color: #F5F9FF;
+}
+
+QListWidget#AssignmentList::item {
+    padding: 10px 11px;
+    border-bottom: 1px solid #F0F4F8;
+}
+
+QListWidget#AssignmentList::item:selected {
+    background-color: #EAF3FF;
+    color: #102A43;
 }
 
 QTableWidget {

@@ -5,7 +5,13 @@ from pathlib import Path
 
 
 class ParsedDocument:
-    def __init__(self, text: str, page_count: int = 1, metadata: dict | None = None, is_scanned: bool = False):
+    def __init__(
+        self,
+        text: str,
+        page_count: int = 1,
+        metadata: dict | None = None,
+        is_scanned: bool = False,
+    ):
         self.text = text
         self.page_count = page_count
         self.metadata = metadata or {}

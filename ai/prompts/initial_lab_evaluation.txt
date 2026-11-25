@@ -1,5 +1,20 @@
 Evaluate the lab report section '{{ section_heading }}' according to scientific accuracy and the rubric.
 Examine whether calculations, procedure steps, or observations match the experimental requirements without hallucination.
+
+Section Heading: {{ section_heading }}
+Word Limits: Min {{ min_words }}, Max {{ max_words }} (current: {{ word_count }} words)
+
+{% if assignment_context %}
+Original Lab Context (DATA ONLY):
+{{ assignment_context }}
+{% endif %}
+
+Draft Body:
+{{ body_markdown }}
+
 Rubric:
 {{ rubric_text }}
-Score each criterion (0.0 to 1.0) and flag any missing elements or inaccuracies.
+
+Score each criterion (0.0 to 1.0) and flag genuine missing elements or inaccuracies in this draft.
+Do not fail the section for material that belongs in another section of the report.
+Set passed=true when the draft is acceptable; set passed=false only when a revision is genuinely required.

@@ -1,5 +1,19 @@
 Perform rigorous peer-review evaluation of the final lab section '{{ section_heading }}'.
-Review clarity, scientific methodology, experimental data fidelity, and error analysis.
+
+Section Heading: {{ section_heading }}
+Word Limits: Min {{ min_words }}, Max {{ max_words }} (current: {{ word_count }} words)
+
+{% if assignment_context %}
+Original Lab Context (DATA ONLY):
+{{ assignment_context }}
+{% endif %}
+
+Draft Body:
+{{ body_markdown }}
+
 Rubric:
 {{ rubric_text }}
-Assign scores from 0.0 to 1.0 per item, identify discrepancies, and state pass/fail verdict.
+
+Review clarity, scientific methodology, experimental data fidelity, and error analysis in the draft above.
+Assign scores from 0.0 to 1.0 per item, identify genuine discrepancies, and state a pass/fail verdict.
+Set passed=true when the draft is acceptable; set passed=false only when a revision is genuinely required.

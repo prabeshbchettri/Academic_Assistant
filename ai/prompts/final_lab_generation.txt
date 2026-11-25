@@ -9,4 +9,25 @@ Calculations and Data Analysis:
 References Context:
 {{ references_context }}
 
+{% if available_references %}
+Available Grounded Citation Keys (ONLY cite from this list):
+{{ available_references }}
+{% endif %}
+
+Document Type: {{ document_type }}
+Student Formatting Notes:
+{{ format_notes }}
+
+Additional Student Notes:
+{{ assignment_notes }}
+{% if feedback %}
+Reviewer Feedback to address:
+{{ feedback }}
+{% endif %}
+
+{% if revision_feedback %}
+Revision Feedback to address:
+{{ revision_feedback }}
+{% endif %}
+
 Draft the section thoroughly within {{ min_words }} - {{ max_words }} words.

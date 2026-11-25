@@ -142,7 +142,7 @@ class MainWindow(QMainWindow):
         # Pages Stack
         self.stack = QStackedWidget()
         self.home_page = HomePage(auto_sync=not use_mock_llm)
-        self.input_page = InputPage()
+        self.input_page = InputPage(auto_load=not use_mock_llm)
         self.processing_page = ProcessingPage()
         self.review_page = ReviewPage()
         self.history_page = HistoryPage()
@@ -165,6 +165,8 @@ class MainWindow(QMainWindow):
         self.home_page.open_history.connect(self._on_open_history)
         self.input_page.start_generation.connect(self._on_start_generation)
         self.review_page.review_decided.connect(self._on_review_decision)
+        self.history_page.edit_requested.connect(self._on_edit_requested)
+        self.settings_page.settings_saved.connect(self._on_settings_saved)
 
         self.refresh_sidebar_profile()
         self.home_page.refresh_recent()
@@ -174,25 +176,22 @@ class MainWindow(QMainWindow):
         if page_id == 0:
             self.home_page.refresh_profile()
             self.home_page.refresh_recent()
+        elif page_id == 1:
+            self.input_page.refresh_preferences()
         elif page_id == 4:
             self.history_page.refresh()
         elif page_id == 5:
             self.settings_page.reload_preferences()
 
-    def _on_home_navigate_input(self, source_tab: str) -> None:
+    def _on_home_navigate_input(self, _source: str = "") -> None:
         self.btn_input.setChecked(True)
         self.stack.setCurrentIndex(1)
-        if source_tab == "classroom":
-            self.input_page.tabs.setCurrentIndex(0)
-        elif source_tab == "manual":
-            self.input_page.tabs.setCurrentIndex(1)
-        elif source_tab == "file":
-            self.input_page.tabs.setCurrentIndex(2)
+        self.input_page.refresh_preferences()
 
     def _on_open_course(self, course_id: str) -> None:
         self.btn_input.setChecked(True)
         self.stack.setCurrentIndex(1)
-        self.input_page.tabs.setCurrentIndex(0)
+        self.input_page.refresh_preferences()
         self.input_page.select_course(course_id)
 
     def _on_open_settings(self) -> None:
@@ -211,6 +210,10 @@ class MainWindow(QMainWindow):
         self.sidebar_user_meta.setText(
             profile.roll_number.strip() or "Complete your profile"
         )
+
+    def _on_settings_saved(self) -> None:
+        self.refresh_sidebar_profile()
+        self.home_page.refresh_profile()
 
     def _on_start_generation(self, raw_input: RawInput, category: str) -> None:
         self.btn_processing.setChecked(True)
@@ -252,17 +255,28 @@ class MainWindow(QMainWindow):
         elif interrupt_type == "human_review":
             self.btn_review.setChecked(True)
             self.stack.setCurrentIndex(3)
-            self.review_page.load_review_data(data.get("report", {}), data.get("evaluation", {}))
+            self.review_page.load_review_data(
+                data.get("report", {}),
+                data.get("evaluation", {}),
+                data.get("telemetry", {}),
+            )
 
     def _on_review_decision(self, decision: HumanDecision) -> None:
         self.btn_processing.setChecked(True)
         self.stack.setCurrentIndex(2)
         self.processing_page.progress_log.status_label.setText(
-            "Applying decision & finalizing document..."
+            "Applying review decision..."
         )
 
         self.worker.configure_resume(self.worker.thread_id, decision.model_dump())
         self.worker.start()
+
+    def _on_edit_requested(self, assignment_id: int) -> None:
+        self.btn_input.setChecked(True)
+        self.stack.setCurrentIndex(1)
+        self.input_page.refresh_preferences()
+        if not self.input_page.load_assignment(assignment_id):
+            self._on_open_history()
 
     def _on_worker_finished(self, final_state: dict) -> None:
         docx_path = final_state.get("docx_path", "")
@@ -280,10 +294,10 @@ class MainWindow(QMainWindow):
         self.history_page.refresh()
 
     def _on_worker_error(self, error_message: str) -> None:
+        self.processing_page.progress_log.log_box.append(f"[ERROR] {error_message}")
+        self.processing_page.progress_log.status_label.setText("Workflow failed")
         QMessageBox.critical(
             self,
             "Workflow Error",
             f"The workflow encountered an error:\n\n{error_message}",
         )
-        self.btn_home.setChecked(True)
-        self.stack.setCurrentIndex(0)

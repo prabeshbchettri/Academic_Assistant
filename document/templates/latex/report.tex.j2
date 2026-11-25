@@ -1,25 +1,33 @@
 % IOE Pulchowk Campus Academic Report Template
-\documentclass[12pt,a4paper]{article}
+\documentclass[\VAR{font_size}pt,a4paper]{article}
 
-% ── Fonts (XeLaTeX) ───────────────────────────────────────────────────────────
+% ── Fonts (XeLaTeX / Tectonic with safe fallback) ────────────────────────────
 \usepackage{fontspec}
-\setmainfont{Times New Roman}[
-  BoldFont     = {Times New Roman Bold},
-  ItalicFont   = {Times New Roman Italic},
-  BoldItalicFont = {Times New Roman Bold Italic}
-]
-\setmonofont{Liberation Mono}[Scale=0.88]
+\IfFontExistsTF{\VAR{font_family}}{%
+  \setmainfont{\VAR{font_family}}%
+}{%
+  \IfFontExistsTF{Liberation Serif}{%
+    \setmainfont{Liberation Serif}%
+  }{%
+    \setmainfont{Latin Modern Roman}%
+  }%
+}
+\IfFontExistsTF{Liberation Mono}{%
+  \setmonofont{Liberation Mono}[Scale=0.88]%
+}{%
+  \setmonofont{Latin Modern Mono}[Scale=0.88]%
+}
 
 % ── Page layout ──────────────────────────────────────────────────────────────
 \usepackage[
-  top=1in, bottom=1in,
-  left=1.25in, right=1in,
+  top=\VAR{margin_top}in, bottom=\VAR{margin_bottom}in,
+  left=\VAR{margin_left}in, right=\VAR{margin_right}in,
   headheight=15pt
 ]{geometry}
 
 % ── Line spacing ─────────────────────────────────────────────────────────────
 \usepackage{setspace}
-\setstretch{1.25}
+\setstretch{\VAR{line_spacing}}
 
 % ── Core packages ────────────────────────────────────────────────────────────
 \usepackage{amsmath,amssymb}
@@ -38,6 +46,7 @@
 \definecolor{ioegold}{RGB}{180,145,80}
 \definecolor{textgray}{RGB}{80,80,80}
 \definecolor{linkblue}{RGB}{30,80,160}
+\definecolor{codebg}{RGB}{246,248,250}
 
 % ── Hyperlinks ───────────────────────────────────────────────────────────────
 \usepackage{hyperref}
@@ -120,8 +129,8 @@
 
 % University hierarchy
 {\large\bfseries\color{ioeblue} \VAR{front_page.university}}\\[0.15cm]
-{\LARGE\bfseries\color{ioeblue} Institute of Engineering}\\[0.1cm]
-{\large \VAR{front_page.campus}}\\[0.08cm]
+{\LARGE\bfseries\color{ioeblue} \VAR{front_page.institution}}\\[0.1cm]
+\BLOCK{ if front_page.campus }{\large \VAR{front_page.campus}}\\[0.08cm]\BLOCK{ endif }
 \BLOCK{ if front_page.department }
 {\normalsize\itshape \VAR{front_page.department}}\\[0.05cm]
 \BLOCK{ endif }

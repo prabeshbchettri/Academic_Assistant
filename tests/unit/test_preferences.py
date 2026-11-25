@@ -14,7 +14,11 @@ from app.preferences import (
 def test_preferences_round_trip(tmp_path):
     path = tmp_path / "preferences.json"
     prefs = AppPreferences(
-        student=StudentProfile(full_name="Subesh Yadav", roll_number="PUL079BEI042"),
+        student=StudentProfile(
+            full_name="Subesh Yadav",
+            roll_number="PUL079BEI042",
+            group="A",
+        ),
         document=DocumentDefaults(
             document_type="Lab Sheet",
             department="Electronics and Computer Engineering",

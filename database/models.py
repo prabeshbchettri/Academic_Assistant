@@ -20,7 +20,7 @@ class AssignmentTable(SQLModel, table=True):
     raw_text: str
     normalized_text: str
     category: str = Field(default="assignment", index=True)
-    status: str = Field(default="pending", index=True)  # pending, in_progress, review, approved, failed
+    status: str = Field(default="pending", index=True)  # pending, in_progress, review, approved
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 

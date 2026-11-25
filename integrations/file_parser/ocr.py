@@ -19,11 +19,13 @@ def perform_ocr_if_needed(file_path: Path, dpi: int = 200) -> tuple[str, bool]:
         doc = pymupdf.open(str(file_path))
         ocr_pages = []
 
-        for page in doc:
+        for page in doc:  # type: ignore[attr-defined]
             zoom = dpi / 72.0
-            mat = fitz.Matrix(zoom, zoom)
+            mat = pymupdf.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat)
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            img = Image.frombytes(
+                "RGB", (pix.width, pix.height), pix.samples
+            )
             text = pytesseract.image_to_string(img)
             ocr_pages.append(text)
 

@@ -47,7 +47,10 @@ class ProgressLogWidget(QWidget):
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setStyleSheet("background-color: #1E293B; color: #F8FAFC; font-family: monospace; font-size: 12px;")
+        self.log_box.setStyleSheet(
+            "background-color: #1E293B; color: #F8FAFC; "
+            "font-family: monospace; font-size: 12px;"
+        )
         layout.addWidget(self.log_box)
 
     def reset(self) -> None:

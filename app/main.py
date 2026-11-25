@@ -11,11 +11,15 @@ from app.settings import settings
 logger = logging.getLogger(__name__)
 
 
-def run_cli_generation(title: str, text: str, category: str = "assignment", mock: bool = False) -> None:
+def run_cli_generation(
+    title: str,
+    text: str,
+    category: str = "assignment",
+    mock: bool = False,
+) -> None:
     from langgraph.types import Command
 
-    from ai.llm.gemini import GeminiProvider
-    from ai.llm.mock import MockProvider
+    from ai.llm.factory import build_provider
     from database.db import get_session, init_db
     from database.repositories import AssignmentRepository
     from models.assignment import RawInput, SourceType
@@ -23,7 +27,7 @@ def run_cli_generation(title: str, text: str, category: str = "assignment", mock
     from workflow.state import WorkflowState
 
     init_db()
-    provider = MockProvider() if mock or not settings.gemini_api_key_str else GeminiProvider(api_key=settings.gemini_api_key_str)
+    provider = build_provider(use_mock=mock)
     graph = build_academic_workflow(llm=provider)
 
     with get_session() as session:
@@ -44,7 +48,11 @@ def run_cli_generation(title: str, text: str, category: str = "assignment", mock
     state: WorkflowState = {
         "assignment_id": assign_id,
         "thread_id": thread_id,
-        "raw_input": RawInput(source_type=SourceType.MANUAL, title=title, raw_text=text).model_dump(mode="json"),
+        "raw_input": RawInput(
+            source_type=SourceType.MANUAL,
+            title=title,
+            raw_text=text,
+        ).model_dump(mode="json"),
         "category": category,
         "retry_count": 0,
         "max_retries": 3,
@@ -54,16 +62,19 @@ def run_cli_generation(title: str, text: str, category: str = "assignment", mock
 
     print(f"Starting CLI run for '{title}' (Category: {category})...", flush=True)
     for chunk in graph.stream(state, config, stream_mode="updates"):
-        for node in chunk.keys():
+        for node in chunk:
             print(f"  -> Finished step: {node}", flush=True)
 
     # Check for human review interrupt and auto-approve in CLI mode
     snapshot = graph.get_state(config)
     if snapshot.tasks and snapshot.tasks[0].interrupts:
-        print("  -> Human review interrupt reached. Auto-approving for CLI export...", flush=True)
-        resume_cmd = Command(resume={"decision": "approve"})
+        print(
+            "  -> Human review interrupt reached. Auto-approving for CLI export...",
+            flush=True,
+        )
+        resume_cmd: Command = Command(resume={"decision": "approve"})
         for chunk in graph.stream(resume_cmd, config, stream_mode="updates"):
-            for node in chunk.keys():
+            for node in chunk:
                 print(f"  -> Finished step: {node}", flush=True)
 
     final_snapshot = graph.get_state(config)
@@ -76,24 +87,49 @@ def run_cli_generation(title: str, text: str, category: str = "assignment", mock
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Academic Document Preparation System")
-    parser.add_argument("--cli", action="store_true", help="Run in headless CLI mode instead of GUI")
-    parser.add_argument("--mock", action="store_true", help="Use deterministic mock LLM provider")
-    parser.add_argument("--title", type=str, default="CLI Test Assignment", help="Assignment title for CLI mode")
+    parser.add_argument(
+        "--cli", action="store_true", help="Run in headless CLI mode instead of GUI"
+    )
+    parser.add_argument(
+        "--mock", action="store_true", help="Use deterministic mock LLM provider"
+    )
+    parser.add_argument(
+        "--title",
+        type=str,
+        default="CLI Test Assignment",
+        help="Assignment title for CLI mode",
+    )
     parser.add_argument(
         "--prompt",
         type=str,
-        default="Discuss the fundamental concepts of Ohm's Law and calculate current when V = 12V and R = 4 ohms.",
+        default=(
+            "Discuss the fundamental concepts of Ohm's Law and calculate current "
+            "when V = 12V and R = 4 ohms."
+        ),
         help="Assignment prompt text for CLI mode",
     )
-    parser.add_argument("--category", type=str, default="assignment", help="Category: assignment, initial_lab, or final_lab")
+    parser.add_argument(
+        "--category",
+        type=str,
+        default="assignment",
+        help="Category: assignment, initial_lab, or final_lab",
+    )
     args = parser.parse_args()
 
     configure_logging()
     logger.info("Starting %s", settings.app_name)
 
     # If --cli specified or no DISPLAY environment variable on Linux, use CLI mode
-    if args.cli or (sys.platform.startswith("linux") and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY")):
-        run_cli_generation(title=args.title, text=args.prompt, category=args.category, mock=args.mock)
+    is_headless_linux = sys.platform.startswith("linux") and not (
+        os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+    )
+    if args.cli or is_headless_linux:
+        run_cli_generation(
+            title=args.title,
+            text=args.prompt,
+            category=args.category,
+            mock=args.mock,
+        )
         return
 
     # Otherwise launch PySide6 Desktop GUI

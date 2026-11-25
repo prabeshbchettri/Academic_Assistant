@@ -18,7 +18,7 @@ class PdfParser(BaseFileParser):
         page_count = len(doc)
         total_chars = 0
 
-        for page in doc:
+        for page in doc:  # type: ignore[attr-defined]
             page_text = page.get_text()
             text_parts.append(page_text)
             total_chars += len(page_text.strip())

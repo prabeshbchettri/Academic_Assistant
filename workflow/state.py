@@ -6,6 +6,7 @@ from typing import Any, TypedDict
 class WorkflowState(TypedDict, total=False):
     assignment_id: int
     thread_id: str
+    version: int
     raw_input: dict[str, Any]
     normalized_input: dict[str, Any]
     category: str
@@ -14,8 +15,10 @@ class WorkflowState(TypedDict, total=False):
     user_provided_data: dict[str, Any]
     references: list[dict[str, Any]]
     retrieved_chunks: list[str]
+    retrieved_sources: list[dict[str, Any]]
     report: dict[str, Any]
     evaluation: dict[str, Any]
+    llm_telemetry: dict[str, Any]
     retry_count: int
     max_retries: int
     failed_sections: list[str]
@@ -25,3 +28,4 @@ class WorkflowState(TypedDict, total=False):
     errors: list[str]
     docx_path: str
     pdf_path: str
+    pdf_engine: str

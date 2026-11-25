@@ -4,6 +4,7 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Template
 
@@ -15,6 +16,71 @@ from models.assignment import NormalizedInput
 from models.report import Citation, FrontPage, ReportContent, SectionDraft
 
 logger = logging.getLogger(__name__)
+
+
+def build_grounded_references(
+    normalized: NormalizedInput,
+    retrieved_sources: list[dict[str, Any]] | None = None,
+    explicit_references: list[Citation] | None = None,
+) -> list[Citation]:
+    """
+    Constructs verifiable citations strictly from explicitly supplied references,
+    retrieved RAG course documents, or the source assignment sheet itself.
+    Never fabricates fictional academic authors or publications.
+    """
+    if explicit_references:
+        return explicit_references
+
+    citations: list[Citation] = []
+    seen_sources: set[str] = set()
+    year = str(datetime.now().year)
+
+    for src in retrieved_sources or []:
+        name = str(src.get("source") or "").strip()
+        if not name or name in seen_sources:
+            continue
+        seen_sources.add(name)
+        idx = len(citations) + 1
+        citations.append(
+            Citation(
+                key=f"[{idx}]",
+                authors=normalized.course_name or "Course Reference",
+                title=name,
+                year=year,
+                venue="Indexed Course Material (RAG)",
+            )
+        )
+
+    # Always allow citing attached/course assignment instructions cleanly
+    course_label = normalized.course_name or "Academic Coursework"
+    if normalized.attachments:
+        for att in normalized.attachments:
+            att_name = Path(att).name
+            if att_name not in seen_sources:
+                seen_sources.add(att_name)
+                idx = len(citations) + 1
+                citations.append(
+                    Citation(
+                        key=f"[{idx}]",
+                        authors=course_label,
+                        title=att_name,
+                        year=year,
+                        venue="Course Assignment Material",
+                    )
+                )
+
+    if not citations:
+        citations.append(
+            Citation(
+                key="[1]",
+                authors=course_label,
+                title=normalized.title or "Course Assignment Specification",
+                year=year,
+                venue="Course Assignment Brief",
+            )
+        )
+
+    return citations
 
 
 class SectionGenerator:
@@ -30,8 +96,8 @@ class SectionGenerator:
         calculated_data: str = "",
         references_context: str = "",
         feedback: str = "",
+        available_references: str = "",
     ) -> SectionDraft:
-        # Load prompt templates
         root_dir = Path(__file__).resolve().parent.parent
         sys_prompt_path = root_dir / config.prompts.system
         gen_prompt_path = root_dir / config.prompts.generation
@@ -47,11 +113,14 @@ class SectionGenerator:
             else "{{ assignment_text }}"
         )
 
-        limits = config.word_limits.sections.get(section_name)
+        section_key = section_name.lower().replace(" ", "_")
+        limits = config.word_limits.sections.get(section_key)
         min_words = limits.min if limits else 100
         max_words = limits.max if limits else 500
 
-        prior_summary = "\n".join(f"- {s.heading}: {s.word_count} words" for s in prior_sections)
+        prior_summary = "\n".join(
+            f"- {s.heading}: {s.word_count} words" for s in prior_sections
+        )
         wrapped_assignment, _ = wrap_untrusted_data(normalized.cleaned_text)
         doc_prefs = normalized.metadata.get("document_preferences", {}) or {}
         format_notes = doc_prefs.get("format_notes", "") or ""
@@ -69,6 +138,7 @@ class SectionGenerator:
             max_words=max_words,
             calculated_data=calculated_data,
             references_context=references_context,
+            available_references=available_references,
             prior_sections_summary=prior_summary,
             feedback=feedback,
             document_type=document_type,
@@ -78,11 +148,9 @@ class SectionGenerator:
         )
 
         draft = self.llm.generate_structured(SectionDraft, system_prompt, user_prompt)
-        # Ensure word count is accurately measured
         draft.word_count = len(draft.body_markdown.split())
         draft.heading = section_name.replace("_", " ").title()
 
-        # Detect missing placeholders
         placeholders = re.findall(r"\[\[MISSING:[^\]]+\]\]", draft.body_markdown)
         draft.missing_placeholders = placeholders
 
@@ -94,12 +162,30 @@ class SectionGenerator:
         normalized: NormalizedInput,
         references: list[Citation] | None = None,
         retrieved_chunks: list[str] | None = None,
+        retrieved_sources: list[dict[str, Any]] | None = None,
     ) -> ReportContent:
         formulas = extract_and_evaluate_formulas(normalized.cleaned_text)
         calc_summary = "\n".join(
             f"- {f['variable']} = {f['expression']} => {f['value']}" for f in formulas
         )
-        ref_context = "\n".join(retrieved_chunks or [])
+
+        if retrieved_sources:
+            ref_context = "\n".join(
+                f"[{idx}] ({src.get('source', 'Material')}): {src.get('text', '')}"
+                for idx, src in enumerate(retrieved_sources, start=1)
+            )
+        else:
+            ref_context = "\n".join(retrieved_chunks or [])
+
+        grounded_refs = build_grounded_references(
+            normalized,
+            retrieved_sources=retrieved_sources,
+            explicit_references=references,
+        )
+        available_refs_text = "\n".join(
+            f"{r.key} {r.authors}, {r.title} ({r.venue}, {r.year})" for r in grounded_refs
+        )
+        valid_ref_keys = {r.key.strip() for r in grounded_refs}
 
         sections: list[SectionDraft] = []
         target_sections = [
@@ -116,27 +202,12 @@ class SectionGenerator:
                 prior_sections=sections,
                 calculated_data=calc_summary,
                 references_context=ref_context,
+                available_references=available_refs_text,
             )
+            # Filter inline citation metadata to grounded reference keys only
+            draft.citations = [c for c in draft.citations if c.strip() in valid_ref_keys]
             logger.info("Completed section '%s' (%d words).", sec, draft.word_count)
             sections.append(draft)
-
-        # Default standard citations if none retrieved
-        default_refs = references or [
-            Citation(
-                key="[1]",
-                authors="J. Smith, R. Taylor",
-                title="Foundations of Modern Experimental Analysis",
-                year="2023",
-                venue="Academic Journal of Engineering & Science",
-            ),
-            Citation(
-                key="[2]",
-                authors="M. Johnson",
-                title="Standard Laboratory Procedures and Error Analysis",
-                year="2022",
-                venue="University Science Press",
-            ),
-        ]
 
         abstract_sec = next(
             (s.body_markdown for s in sections if s.heading.lower() == "abstract"),
@@ -173,7 +244,8 @@ class SectionGenerator:
                 section=student.get("section", ""),
                 submitted_to=metadata.get("submitted_to") or department_name,
                 date=submission_date,
-                logo_path=doc_prefs.get("logo_path") or str(
+                logo_path=doc_prefs.get("logo_path")
+                or str(
                     Path(__file__).resolve().parent.parent
                     / "document"
                     / "assets"
@@ -190,7 +262,7 @@ class SectionGenerator:
             or "Institute of Engineering, Pulchowk Campus",
             abstract=abstract_sec,
             sections=sections,
-            references=default_refs,
+            references=grounded_refs,
             front_page=front_page,
             document_type=document_type,
             include_toc=bool(doc_prefs.get("include_toc", True)),

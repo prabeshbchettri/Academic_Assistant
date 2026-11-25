@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from sqlmodel import Session, select
+from sqlalchemy import delete
+from sqlmodel import Session, col, select
 
 from database.models import (
     AssignmentTable,
     AuditLogTable,
     GeneratedDocumentTable,
+    SourceRecordTable,
     WorkflowRunTable,
     utc_now,
 )
@@ -66,6 +68,19 @@ class AssignmentRepository:
             self.session.commit()
             self.session.refresh(assignment)
         return assignment
+
+    def delete(self, assignment_id: int) -> None:
+        for model in (
+            GeneratedDocumentTable,
+            WorkflowRunTable,
+            SourceRecordTable,
+            AuditLogTable,
+        ):
+            self.session.execute(delete(model).where(col(model.assignment_id) == assignment_id))  # type: ignore[arg-type]
+        assignment = self.get_by_id(assignment_id)
+        if assignment is not None:
+            self.session.delete(assignment)
+        self.session.commit()
 
 
 class WorkflowRunRepository:
@@ -157,7 +172,12 @@ class AuditLogRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def log(self, event: str, assignment_id: int | None = None, detail: dict[str, Any] | None = None) -> AuditLogTable:
+    def log(
+        self,
+        event: str,
+        assignment_id: int | None = None,
+        detail: dict[str, Any] | None = None,
+    ) -> AuditLogTable:
         detail_json = json.dumps(detail or {})
         entry = AuditLogTable(
             assignment_id=assignment_id,

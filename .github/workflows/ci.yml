@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality-and-tests:
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+      UV_CACHE_DIR: ~/.cache/uv
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install system Qt / LibreOffice test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libdbus-1-3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python and dependencies
+        run: uv sync --extra dev --extra google --extra rag --frozen
+
+      - name: Lint with Ruff
+        run: uv run ruff check app ai models workflow document integrations database scripts tests configs
+
+      - name: Type-check with MyPy
+        run: uv run mypy app ai models workflow document integrations database configs
+
+      - name: Run unit, UI, and integration tests
+        run: uv run pytest -v
+
+      - name: Run offline AI evaluation benchmark
+        run: uv run python -m scripts.eval_benchmark

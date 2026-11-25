@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from langgraph.types import interrupt
 
+from ai.calculations import extract_and_evaluate_formulas
 from ai.classifier import Classifier
-from ai.evaluator import Evaluator
-from ai.generator import SectionGenerator
+from ai.evaluator import Evaluator, format_section_feedback
+from ai.generator import SectionGenerator, build_grounded_references
 from ai.llm.base import LLMProvider
 from ai.retriever import RagRetriever
 from configs.schema import CategoryConfig, load_category_config
@@ -16,6 +18,7 @@ from database.repositories import (
     AssignmentRepository,
     AuditLogRepository,
     DocumentRepository,
+    WorkflowRunRepository,
 )
 from document.docx_generator import DocxGenerator
 from document.pdf_exporter import PdfExporter
@@ -24,12 +27,54 @@ from models.assignment import (
     Category,
     NormalizedInput,
     RawInput,
+    SourceType,
 )
-from models.evaluation import DecisionType, HumanDecision
-from models.report import ReportContent
+from models.evaluation import DecisionType, EvaluationResult, HumanDecision
+from models.report import ReportContent, SectionDraft
 from workflow.state import WorkflowState
 
 logger = logging.getLogger(__name__)
+
+_MEASUREMENT_RE = re.compile(
+    r"(?:"
+    r"=\s*[-+]?\d"
+    r"|[-+]?\d+(?:\.\d+)?\s*(?:v|mv|kv|a|ma|ohm|ohms|ω|hz|khz|mhz|m|cm|mm|km|kg|g|s|ms|n|pa|j|w|kw|db|deg|°|%)"
+    r"|\btrial\s*\d+"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _has_experimental_data(norm: NormalizedInput) -> bool:
+    notes = str((norm.metadata or {}).get("assignment_notes") or "")
+    combined = f"{norm.cleaned_text}\n{notes}"
+    if _MEASUREMENT_RE.search(combined):
+        return True
+    # Strip likely header/title/course code tokens on the first line before counting raw numbers
+    lines = norm.cleaned_text.splitlines()
+    body = "\n".join(lines[1:]) if len(lines) > 1 else ""
+    body_plus_notes = f"{body}\n{notes}"
+    numeric_tokens = re.findall(r"\b\d+(?:\.\d+)?\b", body_plus_notes)
+    return len(numeric_tokens) >= 2
+
+
+def _collect_telemetry(llm: LLMProvider) -> dict[str, Any]:
+    tracker = getattr(llm, "telemetry", None)
+    if tracker is not None and hasattr(tracker, "summary"):
+        return dict(tracker.summary())
+    return {}
+
+
+def _apply_edited_sections(report: ReportContent, edited_sections: dict[str, str]) -> bool:
+    changed = False
+    for sec in report.sections:
+        if sec.heading in edited_sections:
+            new_body = edited_sections[sec.heading]
+            if new_body != sec.body_markdown:
+                sec.body_markdown = new_body
+                sec.word_count = len(new_body.split())
+                changed = True
+    return changed
 
 
 def normalize_node(state: WorkflowState) -> dict[str, Any]:
@@ -52,8 +97,7 @@ def normalize_node(state: WorkflowState) -> dict[str, Any]:
 
 
 def classify_node(state: WorkflowState, llm: LLMProvider) -> dict[str, Any]:
-    norm_dict = state["normalized_input"]
-    norm = NormalizedInput.model_validate(norm_dict)
+    norm = NormalizedInput.model_validate(state["normalized_input"])
 
     manual_cat_str = state.get("category")
     manual_cat = Category(manual_cat_str) if manual_cat_str else None
@@ -82,31 +126,52 @@ def check_missing_info_node(state: WorkflowState) -> dict[str, Any]:
     norm = NormalizedInput.model_validate(state["normalized_input"])
     cat = state["category"]
 
-    # If it's a lab and has literally no numbers or procedures, flag missing info
-    missing_questions = []
-    text_lower = norm.cleaned_text.lower()
-    if cat in ("initial_lab", "final_lab"):
-        has_numbers = any(char.isdigit() for char in norm.cleaned_text)
-        if not has_numbers and "user_provided_data" not in state:
-            missing_questions.append("Experimental measurements/data: Please provide trial values or data tables.")
+    missing_questions: list[str] = []
+    if (
+        cat in ("initial_lab", "final_lab")
+        and not _has_experimental_data(norm)
+        and "user_provided_data" not in state
+    ):
+        missing_questions.append(
+            "Experimental measurements/data: Please provide trial values, "
+            "apparatus specs, or data tables."
+        )
 
     history = state.get("node_history", []) + ["check_missing_info"]
 
     if missing_questions and not state.get("user_provided_data"):
-        # Interrupt workflow and ask student for missing data
         user_response = interrupt({
             "type": "missing_info",
             "questions": missing_questions,
         })
         provided_text = ""
         if isinstance(user_response, dict):
-            provided_text = user_response.get("provided_data") or user_response.get("details") or ""
+            provided_text = str(
+                user_response.get("provided_data") or user_response.get("details") or ""
+            ).strip()
         elif user_response:
-            provided_text = str(user_response)
+            provided_text = str(user_response).strip()
+
+        final_provided = provided_text or "Simulate standard realistic observations."
+        # Inject user-provided measurements directly into normalized_input for generator & evaluator
+        if provided_text and "simulate standard" not in provided_text.lower():
+            norm.cleaned_text = (
+                f"{norm.cleaned_text}\n\n"
+                f"[Student Provided Experimental Data]\n{final_provided}"
+            ).strip()
+            meta = dict(norm.metadata or {})
+            existing_notes = str(meta.get("assignment_notes") or "").strip()
+            meta["assignment_notes"] = (
+                f"{existing_notes}\n{final_provided}".strip()
+                if existing_notes
+                else final_provided
+            )
+            norm.metadata = meta
 
         return {
+            "normalized_input": norm.model_dump(mode="json"),
             "missing_info": {"is_missing": True, "questions": missing_questions},
-            "user_provided_data": {"details": provided_text or "Simulated standard observations"},
+            "user_provided_data": {"details": final_provided},
             "node_history": history,
         }
 
@@ -119,16 +184,20 @@ def check_missing_info_node(state: WorkflowState) -> dict[str, Any]:
 def retrieve_references_node(state: WorkflowState, llm: LLMProvider) -> dict[str, Any]:
     cfg = CategoryConfig.model_validate(state["category_config"])
     norm = NormalizedInput.model_validate(state["normalized_input"])
-    chunks = []
+    chunks: list[str] = []
+    sources: list[dict[str, Any]] = []
 
     if cfg.rag.enabled:
         course = norm.course_name or "general"
         retriever = RagRetriever(llm=llm)
-        chunks = retriever.retrieve(course, norm.title)
+        retrieved = retriever.retrieve_with_sources(course, norm.title)
+        chunks = [item.text for item in retrieved]
+        sources = [item.model_dump(mode="json") for item in retrieved]
 
     history = state.get("node_history", []) + ["retrieve_references"]
     return {
         "retrieved_chunks": chunks,
+        "retrieved_sources": sources,
         "node_history": history,
     }
 
@@ -136,14 +205,21 @@ def retrieve_references_node(state: WorkflowState, llm: LLMProvider) -> dict[str
 def generate_content_node(state: WorkflowState, llm: LLMProvider) -> dict[str, Any]:
     cfg = CategoryConfig.model_validate(state["category_config"])
     norm = NormalizedInput.model_validate(state["normalized_input"])
-    retrieved = state.get("retrieved_chunks", [])
+    retrieved_chunks = state.get("retrieved_chunks", [])
+    retrieved_sources = state.get("retrieved_sources", [])
 
     generator = SectionGenerator(llm)
-    report = generator.generate_full_report(cfg, norm, retrieved_chunks=retrieved)
+    report = generator.generate_full_report(
+        cfg,
+        norm,
+        retrieved_chunks=retrieved_chunks,
+        retrieved_sources=retrieved_sources,
+    )
 
     history = state.get("node_history", []) + ["generate_content"]
     return {
         "report": report.model_dump(mode="json"),
+        "llm_telemetry": _collect_telemetry(llm),
         "node_history": history,
         "retry_count": state.get("retry_count", 0),
     }
@@ -151,15 +227,17 @@ def generate_content_node(state: WorkflowState, llm: LLMProvider) -> dict[str, A
 
 def evaluate_output_node(state: WorkflowState, llm: LLMProvider) -> dict[str, Any]:
     cfg = CategoryConfig.model_validate(state["category_config"])
+    norm = NormalizedInput.model_validate(state["normalized_input"])
     report = ReportContent.model_validate(state["report"])
 
     evaluator = Evaluator(llm)
-    eval_result = evaluator.evaluate_semantic(cfg, report)
+    eval_result = evaluator.evaluate_semantic(cfg, report, normalized=norm)
 
     history = state.get("node_history", []) + ["evaluate_output"]
     return {
         "evaluation": eval_result.model_dump(mode="json"),
         "failed_sections": eval_result.failed_sections,
+        "llm_telemetry": _collect_telemetry(llm),
         "node_history": history,
     }
 
@@ -168,22 +246,80 @@ def regenerate_failed_node(state: WorkflowState, llm: LLMProvider) -> dict[str, 
     cfg = CategoryConfig.model_validate(state["category_config"])
     norm = NormalizedInput.model_validate(state["normalized_input"])
     report = ReportContent.model_validate(state["report"])
-    failed = state.get("failed_sections", [])
+    failed = list(state.get("failed_sections", []))
     retry_count = state.get("retry_count", 0) + 1
 
+    eval_dict = state.get("evaluation") or {}
+    eval_obj = EvaluationResult.model_validate(eval_dict) if eval_dict else None
+
+    decision = state.get("human_decision") or {}
+    student_feedback = ""
+    requested_sections: list[str] = []
+    if isinstance(decision, dict):
+        student_feedback = (decision.get("feedback") or "").strip()
+        requested_sections = [
+            str(name)
+            for name in (decision.get("regenerate_sections") or [])
+            if str(name).strip()
+        ]
+
+    if requested_sections:
+        failed = requested_sections
+    elif student_feedback:
+        failed = [sec.heading for sec in report.sections]
+
+    formulas = extract_and_evaluate_formulas(norm.cleaned_text)
+    calc_summary = "\n".join(
+        f"- {f['variable']} = {f['expression']} => {f['value']}" for f in formulas
+    )
+    retrieved_sources = state.get("retrieved_sources", [])
+    if retrieved_sources:
+        ref_context = "\n".join(
+            f"[{idx}] ({src.get('source', 'Material')}): {src.get('text', '')}"
+            for idx, src in enumerate(retrieved_sources, start=1)
+        )
+    else:
+        ref_context = "\n".join(state.get("retrieved_chunks", []))
+
+    grounded_refs = report.references or build_grounded_references(
+        norm, retrieved_sources=retrieved_sources
+    )
+    available_refs_text = "\n".join(
+        f"{r.key} {r.authors}, {r.title} ({r.venue}, {r.year})" for r in grounded_refs
+    )
+    valid_ref_keys = {r.key.strip() for r in grounded_refs}
+
     generator = SectionGenerator(llm)
-    new_sections = []
+    new_sections: list[SectionDraft] = []
+    failed_lower = {item.lower().replace("_", " ") for item in failed}
 
     for sec in report.sections:
-        if sec.heading in failed or sec.heading.lower().replace(" ", "_") in failed:
-            logger.info("Regenerating failed section '%s' (Attempt %d)", sec.heading, retry_count)
+        sec_norm = sec.heading.lower().replace("_", " ")
+        if sec.heading in failed or sec_norm in failed_lower:
+            logger.info("Regenerating section '%s' (Attempt %d)", sec.heading, retry_count)
+            section_critique = (
+                format_section_feedback(eval_obj, sec.heading) if eval_obj else ""
+            )
+            feedback_parts = [
+                "Previous attempt failed quality gates. "
+                "Strictly address the rubric and word count bounds."
+            ]
+            if section_critique:
+                feedback_parts.append(f"Automated evaluator findings:\n{section_critique}")
+            if student_feedback:
+                feedback_parts.append(f"Student feedback to address:\n{student_feedback}")
+
             draft = generator.generate_section(
                 config=cfg,
                 normalized=norm,
                 section_name=sec.heading,
                 prior_sections=new_sections,
-                feedback="Previous attempt had issues. Please address rubric and word limits carefully.",
+                calculated_data=calc_summary,
+                references_context=ref_context,
+                feedback="\n\n".join(feedback_parts),
+                available_references=available_refs_text,
             )
+            draft.citations = [c for c in draft.citations if c.strip() in valid_ref_keys]
             new_sections.append(draft)
         else:
             new_sections.append(sec)
@@ -194,18 +330,19 @@ def regenerate_failed_node(state: WorkflowState, llm: LLMProvider) -> dict[str, 
     return {
         "report": report.model_dump(mode="json"),
         "retry_count": retry_count,
+        "llm_telemetry": _collect_telemetry(llm),
         "node_history": history,
     }
 
 
 def human_review_node(state: WorkflowState) -> dict[str, Any]:
-    # Mandatory human approval interrupt before document export
     history = state.get("node_history", []) + ["human_review"]
 
     decision_data = interrupt({
         "type": "human_review",
         "report": state["report"],
         "evaluation": state["evaluation"],
+        "telemetry": state.get("llm_telemetry", {}),
     })
 
     if isinstance(decision_data, dict):
@@ -213,23 +350,33 @@ def human_review_node(state: WorkflowState) -> dict[str, Any]:
     else:
         decision = HumanDecision(decision=DecisionType.APPROVE)
 
-    # Apply any direct text edits made by user
-    if decision.decision == DecisionType.EDIT and decision.edited_sections:
-        report = ReportContent.model_validate(state["report"])
-        for sec in report.sections:
-            if sec.heading in decision.edited_sections:
-                sec.body_markdown = decision.edited_sections[sec.heading]
-                sec.word_count = len(sec.body_markdown.split())
-        return {
-            "human_decision": decision.model_dump(mode="json"),
-            "report": report.model_dump(mode="json"),
-            "node_history": history,
-        }
+    report = ReportContent.model_validate(state["report"])
+    edits_applied = False
+    if decision.edited_sections:
+        edits_applied = _apply_edited_sections(report, decision.edited_sections)
 
-    return {
+    updates: dict[str, Any] = {
         "human_decision": decision.model_dump(mode="json"),
         "node_history": history,
     }
+    if edits_applied or decision.decision == DecisionType.EDIT:
+        updates["report"] = report.model_dump(mode="json")
+        # Refresh deterministic verification checks when edits were applied
+        if state.get("category_config") and state.get("evaluation"):
+            cfg = CategoryConfig.model_validate(state["category_config"])
+            eval_obj = EvaluationResult.model_validate(state["evaluation"])
+            det_passed, findings = Evaluator(llm=None).run_deterministic_checks(cfg, report)  # type: ignore[arg-type]
+            eval_obj.deterministic_passed = det_passed
+            eval_obj.deterministic_findings = findings
+            det_failed = [f.section for f in findings if not f.passed and f.section]
+            eval_obj.failed_sections = list(dict.fromkeys(det_failed))
+            eval_obj.overall_passed = det_passed and len(eval_obj.failed_sections) == 0
+            updates["evaluation"] = eval_obj.model_dump(mode="json")
+
+    if decision.decision == DecisionType.REJECT:
+        updates["status"] = "rejected"
+
+    return updates
 
 
 def export_node(state: WorkflowState) -> dict[str, Any]:
@@ -237,16 +384,26 @@ def export_node(state: WorkflowState) -> dict[str, Any]:
     cfg = CategoryConfig.model_validate(state["category_config"])
     assignment_id = state.get("assignment_id", 1)
 
+    version = state.get("version")
+    if not version:
+        with get_session() as session:
+            existing_docs = DocumentRepository(session).list_by_assignment(assignment_id)
+            version = (existing_docs[0].version + 1) if existing_docs else 1
+
     docx_gen = DocxGenerator()
-    docx_path = docx_gen.generate(report, cfg, assignment_id=assignment_id)
+    docx_path = docx_gen.generate(report, cfg, assignment_id=assignment_id, version=version)
 
     pdf_exporter = PdfExporter()
-    pdf_path = pdf_exporter.export(report, docx_path, assignment_id=assignment_id)
+    pdf_path = pdf_exporter.export(
+        report, docx_path, assignment_id=assignment_id, version=version
+    )
 
     history = state.get("node_history", []) + ["export"]
     return {
+        "version": version,
         "docx_path": str(docx_path),
         "pdf_path": str(pdf_path) if pdf_path else "",
+        "pdf_engine": getattr(pdf_exporter, "last_engine", "tectonic"),
         "status": "approved",
         "node_history": history,
     }
@@ -255,36 +412,64 @@ def export_node(state: WorkflowState) -> dict[str, Any]:
 def persist_node(state: WorkflowState) -> dict[str, Any]:
     assignment_id = state.get("assignment_id", 1)
     thread_id = state.get("thread_id", "default_thread")
+    final_status = state.get("status", "completed")
 
     with get_session() as session:
         assign_repo = AssignmentRepository(session)
         assign_record = assign_repo.get_by_id(assignment_id)
         if assign_record is None:
             norm_title = state.get("normalized_input", {}).get("title", "Assignment")
+            norm_text = state.get("normalized_input", {}).get("cleaned_text", "")
+            content_hash = state.get("normalized_input", {}).get("content_hash", "")
             assign_record = assign_repo.create(
                 title=norm_title,
-                raw_text="",
-                normalized_text="",
-                content_hash="",
-                status=state.get("status", "completed"),
+                raw_text=norm_text,
+                normalized_text=norm_text,
+                content_hash=content_hash,
+                status=final_status,
             )
             assignment_id = assign_record.id or assignment_id
         else:
-            assign_repo.update_status(assignment_id, state.get("status", "completed"))
+            assign_repo.update_status(assignment_id, final_status)
 
-        doc_repo = DocumentRepository(session)
-        doc_repo.create(
+        if state.get("docx_path"):
+            doc_repo = DocumentRepository(session)
+            doc_repo.create(
+                assignment_id=assignment_id,
+                docx_path=state.get("docx_path", ""),
+                pdf_path=state.get("pdf_path"),
+                version=int(state.get("version") or 1),
+                engine=state.get("pdf_engine") or "tectonic",
+                run_id=thread_id,
+            )
+
+        run_repo = WorkflowRunRepository(session)
+        run_repo.save_or_update(
+            thread_id=thread_id,
             assignment_id=assignment_id,
-            docx_path=state.get("docx_path", ""),
-            pdf_path=state.get("pdf_path"),
-            run_id=thread_id,
+            status="completed" if final_status == "approved" else final_status,
+            current_node="persist",
+            retry_count=int(state.get("retry_count") or 0),
+            state_dict={
+                "category": state.get("category"),
+                "version": state.get("version", 1),
+                "pdf_engine": state.get("pdf_engine", ""),
+                "telemetry": state.get("llm_telemetry", {}),
+                "node_history": state.get("node_history", []),
+            },
         )
 
         audit_repo = AuditLogRepository(session)
         audit_repo.log(
             event="workflow_completed",
             assignment_id=assignment_id,
-            detail={"thread_id": thread_id, "category": state.get("category")},
+            detail={
+                "thread_id": thread_id,
+                "category": state.get("category"),
+                "status": final_status,
+                "version": state.get("version", 1),
+                "telemetry": state.get("llm_telemetry", {}),
+            },
         )
 
     history = state.get("node_history", []) + ["persist"]

@@ -9,15 +9,16 @@ Last updated: 2026-11-21
 
 Build a **local-first, cross-platform desktop application** that:
 
-1. Collects assignments from manual text, local files, Google Classroom, and Gmail.
+1. Collects assignments from Google Classroom courses the student is enrolled in.
 2. Normalizes and classifies them into **Assignment**, **Initial Lab**, or **Final Lab**.
 3. Loads category-specific rules, templates, and prompts from YAML.
-4. Generates structured academic content with **Google Gemini**.
-5. Validates output with **deterministic Python checks + a separate Gemini evaluator**.
-6. Retries only failed sections (maximum 3 attempts).
+4. Generates structured academic content with **NVIDIA Nemotron** (Gemini fallback) using the student profile, document defaults, and formatting notes.
+5. Validates output with **deterministic Python checks + a separate LLM evaluator**.
+6. Retries only failed sections (maximum 3 attempts) and supports feedback-driven regeneration.
 7. Requires **mandatory human review and approval**.
-8. Exports a polished **DOCX** and a **high-quality PDF**.
-9. Stores assignments, workflow state, and documents locally in SQLite.
+8. Exports a polished **DOCX** and a **high-quality PDF** with a front page and optional table of contents.
+9. Stores assignments, workflow state, documents, and revision history locally in SQLite.
+10. Lets the student revise an exported document with written feedback.
 
 The first full build includes Google integrations and optional RAG. The DOCX is the canonical editable artifact; PDF is a rendering of the same structured report.
 
@@ -29,7 +30,7 @@ The first full build includes Google integrations and optional RAG. The DOCX is 
 |---|---|---|
 | Scope | Full system: MVP + Google + RAG | User selected full system |
 | Primary user | Student | Production app is student-facing and reads only student data |
-| LLM | Google Gemini: free-tier default `gemini-3.6-flash`, premium `gemini-3.1-pro-preview` when billing is enabled | User has Gemini Pro; free tier has no Pro quota |
+| LLM | NVIDIA NIM default (`nvidia/nemotron-3-ultra-550b-a55b`), Google Gemini fallback | Gemini Pro quota is exhausted quickly; Nemotron is the primary generator |
 | Platform | Cross-platform (Linux + Windows) | User selected cross-platform |
 | Python | `uv`-managed Python 3.12 venv | Reproducible, matches spec |
 | Documents | Built-in academic DOCX template + override hook | Clean default, flexible later |
@@ -79,12 +80,12 @@ flowchart TD
     UI[PySide6 Desktop UI] --> WF[LangGraph Workflow]
     UI --> DB[(SQLite)]
     WF --> DB
-    WF --> LLM[Gemini API]
+    WF --> LLM[NVIDIA NIM / Gemini fallback]
     WF --> RAG[(ChromaDB - optional)]
     WF --> DOC[DOCX Generator]
     DOC --> LT[LaTeX PDF via Tectonic]
     DOC --> LO[LibreOffice fallback]
-    WF --> G[Classroom / Gmail]
+    WF --> G[Google Classroom]
     G --> NORM[Normalization + Dedup]
     NORM --> WF
 ```
@@ -93,8 +94,8 @@ flowchart TD
 
 1. **Presentation** — PySide6 pages, background workers, review UI.
 2. **Orchestration** — LangGraph state machine, routing, retries, interrupts.
-3. **Intelligence** — Gemini provider, classifier, generator, evaluator, retriever.
-4. **Integration** — Google OAuth, Classroom, Gmail, file parsers, OCR.
+3. **Intelligence** — NVIDIA NIM provider (Gemini fallback), classifier, generator, evaluator, retriever.
+4. **Integration** — Google OAuth and Classroom courses/coursework.
 5. **Documents** — DOCX builder, Tectonic/LaTeX PDF exporter, LibreOffice fallback.
 6. **Persistence** — SQLite domain tables, workflow checkpoints, audit log.
 
@@ -119,15 +120,12 @@ flowchart TD
 | Desktop UI | PySide6 | Cross-platform desktop app |
 | Orchestration | LangGraph | Stateful workflow, routing, retries, HITL |
 | Checkpoints | `langgraph-checkpoint-sqlite` | Crash recovery and resume |
-| LLM | `google-genai` (Gemini 3.6 Flash default / 3.1 Pro premium) | Classification, generation, evaluation, embeddings |
+| LLM | `httpx` (NVIDIA NIM default) + `google-genai` (Gemini fallback) | Classification, generation, evaluation, embeddings |
 | Validation | Pydantic v2 | Schemas and structured output |
 | Settings | `pydantic-settings` | Typed configuration |
 | Database | SQLite + SQLModel | Local persistence |
-| Google APIs | `google-api-python-client`, `google-auth-oauthlib` | Classroom and Gmail |
+| Google APIs | `google-api-python-client`, `google-auth-oauthlib` | Classroom courses and coursework |
 | Secrets | `keyring` + `.env` | Token and API-key storage |
-| PDF parsing | PyMuPDF | Text extraction and page rendering |
-| DOCX parsing | `python-docx` | Read and write Word files |
-| OCR | Tesseract + `pytesseract` | Scanned PDF fallback |
 | RAG | ChromaDB | Local vector store (optional extra) |
 | Config | YAML + PyYAML | Category rules and prompts |
 | Resilience | `tenacity` | Retry/backoff for API calls |
@@ -142,7 +140,7 @@ flowchart TD
 
 ### Dependency groups
 
-- **Core**: UI, LangGraph, Pydantic, SQLModel, Gemini, parsing, DOCX, PDF detection.
+- **Core**: UI, LangGraph, Pydantic, SQLModel, NVIDIA NIM, Gemini fallback, parsing, DOCX, PDF detection.
 - **`[google]`**: Google API clients.
 - **`[rag]`**: ChromaDB.
 - **`[dev]`**: pytest, ruff, mypy, PyInstaller.
@@ -156,6 +154,7 @@ flowchart TD
 academic-ai/
 ├── app/
 │   ├── main.py
+│   ├── preferences.py
 │   ├── settings.py
 │   └── ui/
 │       ├── main_window.py
@@ -167,6 +166,8 @@ academic-ai/
 │       │   ├── history_page.py
 │       │   └── settings_page.py
 │       ├── widgets/
+│       │   ├── course_card.py
+│       │   ├── preparation_form.py
 │       │   ├── preview.py
 │       │   ├── section_editor.py
 │       │   └── progress_log.py
@@ -174,16 +175,8 @@ academic-ai/
 │       └── styles.qss
 ├── integrations/
 │   ├── google_auth.py
-│   ├── classroom/
-│   │   └── client.py
-│   ├── gmail/
-│   │   └── client.py
-│   └── file_parser/
-│       ├── base.py
-│       ├── pdf.py
-│       ├── docx.py
-│       ├── text.py
-│       └── ocr.py
+│   └── classroom/
+│       └── client.py
 ├── workflow/
 │   ├── graph.py
 │   ├── state.py
@@ -254,13 +247,13 @@ academic-ai/
 
 ### Domain models (Pydantic)
 
-- `RawInput` — manual text, file path, Classroom item, or Gmail message.
+- `RawInput` — Classroom coursework item and its teacher instructions.
 - `NormalizedInput` — cleaned text, title, metadata, attachments, source, content hash.
 - `Category` — enum: `assignment`, `initial_lab`, `final_lab`.
 - `ClassificationResult` — category, confidence, rationale, method (rule/LLM/manual).
 - `MissingInfoRequest` — questions and expected data.
 - `SectionDraft` — heading, body, tables, figures, citations, word count.
-- `ReportContent` — title, abstract, sections, references, metadata.
+- `ReportContent` — title, abstract, sections, references, front page, document type, table-of-contents flag, metadata.
 - `SectionEvaluation` — section, criteria scores, passed, issues.
 - `EvaluationResult` — overall pass, deterministic findings, semantic findings.
 - `HumanDecision` — approve, edit, regenerate, feedback.
@@ -435,11 +428,22 @@ class LLMProvider(Protocol):
 
 Implementations:
 
-- `GeminiProvider` — default, uses `google-genai` with JSON schema output.
+- `NvidiaProvider` — default, uses NVIDIA NIM's OpenAI-compatible chat completions with JSON output.
+- `GeminiProvider` — fallback, uses `google-genai` with JSON schema output.
 - `MockProvider` — deterministic responses for tests.
 - Future: OpenAI-compatible provider.
 
-### Gemini configuration
+### NVIDIA configuration
+
+- Default provider: NVIDIA NIM through the OpenAI-compatible `https://integrate.api.nvidia.com/v1` endpoint.
+- Default model: `nvidia/nemotron-3-ultra-550b-a55b`.
+- Structured requests use `response_format={"type": "json_object"}` with thinking disabled for clean JSON.
+- Text requests enable thinking through `chat_template_kwargs`.
+- Token budget: 16384 output tokens; per-call timeout: 180 seconds.
+- If `NVIDIA_API_KEY` is missing, the factory falls back to Gemini and then the mock provider.
+- Embeddings use `nvidia/nv-embedqa-e5-v5`.
+
+### Gemini fallback configuration
 
 - Free-tier default: `gemini-3.6-flash` for classification, generation, and evaluation.
 - Premium model: `gemini-3.1-pro-preview` when billing is enabled on the Google Cloud project.
@@ -457,7 +461,7 @@ Implementations:
 ### Classification
 
 1. Rule-based scoring using keywords, regex, and source metadata.
-2. If confidence is below threshold, call Gemini with `ClassificationResult`.
+2. If confidence is below threshold, call the configured LLM with `ClassificationResult`.
 3. If still ambiguous, ask the user to choose.
 4. Always allow manual override.
 
@@ -483,7 +487,7 @@ Implementations:
 - Banned phrases and obvious hallucination markers.
 - Heading and table structure validity.
 
-**Semantic evaluation (Gemini):**
+**Semantic evaluation (LLM):**
 
 - Separate evaluator prompt and node.
 - Rubric-based per-section scoring.
@@ -496,7 +500,7 @@ Implementations:
 - ChromaDB persistent client under `storage/rag`.
 - Collections per course/category.
 - Chunking: approximately 800–1200 tokens with 150-token overlap.
-- Gemini embeddings.
+- Provider embeddings (NVIDIA NIM or Gemini).
 - Metadata: source file, page, course, section.
 - Retrieval query built from assignment + section heading.
 - Citations map back to source metadata.
@@ -517,51 +521,43 @@ Implementations:
 
 ## 11. Input and integrations
 
-### Manual input
+### Primary input: Google Classroom
 
-- Raw assignment text.
-- Optional title, course, due date, and user-provided data.
+- Student signs in with their own Google account.
+- List active courses the student is enrolled in.
+- Load published coursework and teacher instructions for the selected course.
+- Use the Classroom coursework ID as the external source ID for deduplication.
+- Open the assignment in Classroom from the preparation page when a link is available.
+- Manual, file, and Gmail input are not part of the current student build.
 
-### Local files
+### Student profile and document defaults
 
-- PDF via PyMuPDF.
-- DOCX via `python-docx` (paragraphs and tables in order).
-- TXT/Markdown with encoding detection.
-- Validation: allowed extensions, maximum size (25 MB), sanitized filenames, path-traversal prevention.
-- Deduplication using SHA-256 of normalized content.
+- Persist the student's name, roll number, group, program, department, semester, section, and email.
+- Persist document defaults: type, institution, university, campus, department, front-page toggle, table-of-contents toggle, citation style, font, size, line spacing, margins, logo, and formatting notes.
+- Pre-fill the preparation form from saved defaults.
+- Save changes back to `storage/preferences.json` when the student asks.
 
-### OCR fallback
+### Preparation page
 
-- Detect PDFs with little or no extractable text.
-- Render pages at 200–300 DPI with PyMuPDF.
-- Run Tesseract via `pytesseract`.
-- Attach OCR confidence and warn the user when quality is low.
+- Single-page workspace; no input-source tabs.
+- Class selector and assignment list.
+- Read-only teacher instructions preview.
+- Editable document title and course.
+- Submission details, document type, front-page fields, formatting controls, and extra notes.
+- Everything is adjustable before generation starts.
+- The document type can be auto-detected or explicitly selected.
 
 ### Google OAuth
 
 - Installed-app desktop flow with local redirect server.
 - Least-privilege scopes:
-  - Classroom: courses and coursework read-only.
-  - Gmail: read-only.
-- Refresh token stored in the OS keyring.
-- Encrypted-file fallback if keyring is unavailable.
+  - Classroom courses: read-only.
+  - Classroom coursework: read-only.
+- No Gmail scope.
+- Refresh token stored under `storage/credentials/`.
 - `credentials.json` is never committed.
 - Clear error messages for consent, permission, and quota failures.
-
-### Google Classroom
-
-- List active courses.
-- Fetch coursework and materials.
-- Download attachments.
-- Map external IDs to `SourceRecord` for deduplication.
-- If access fails, offer manual upload.
-
-### Gmail
-
-- Search using sender, subject, date, and attachment filters.
-- Download supported attachments.
-- Deduplicate by message ID and attachment hash.
-- Ask the user to confirm ambiguous matches.
+- `OAUTHLIB_RELAX_TOKEN_SCOPE=1` prevents crashes when Google returns a narrower scope set than requested.
 
 ---
 
@@ -694,12 +690,22 @@ storage/outputs/<assignment_id>/<version>/
 
 ### Pages
 
-- **Home** — new assignment, recent assignments, resume interrupted runs.
-- **Input** — manual text, file picker, Classroom, Gmail.
-- **Processing** — live node progress, retry status, errors.
-- **Review** — rendered preview, section editor, per-section regenerate, approve.
-- **History** — past assignments, documents, re-export, audit trail.
-- **Settings** — Gemini key/model, OAuth connection, PDF engine, RAG indexing, paths.
+- **Dashboard** — Classroom connection, enrolled classes, recent documents, profile status, and quick actions.
+- **Prepare assignment** — single-page Classroom workspace: class selector, assignment list, teacher instructions, submission details, front-page options, formatting, and notes.
+- **Processing** — live node progress, retry status, errors, and missing-data prompts.
+- **Review** — rendered preview, section editor, per-section regenerate, feedback-driven regeneration, approve.
+- **History** — exported documents, open DOCX/PDF/folder, revise with written feedback.
+- **Settings** — student profile, document defaults, NVIDIA/Gemini key and model, PDF engine, Google connection.
+
+### Student workflow
+
+1. Connect Classroom from the dashboard or preparation page.
+2. Select a class and assignment.
+3. Confirm or edit submission details, document type, front page, formatting, and notes.
+4. Start preparation and monitor processing.
+5. Review the generated document, edit sections, regenerate failed sections, or request changes with feedback.
+6. Approve and export DOCX + PDF.
+7. Reopen the document from history, or revise it with new feedback to create another version.
 
 ### Interaction rules
 
@@ -742,7 +748,8 @@ storage/outputs/<assignment_id>/<version>/
 ### Unit tests
 
 - Config loading and validation.
-- PDF/DOCX/TXT parsers and OCR fallback.
+- Student profile and document-default persistence.
+- Front-page construction and revision feedback metadata.
 - Classifier rules.
 - Deterministic validators.
 - Safe calculations.
@@ -770,7 +777,7 @@ storage/outputs/<assignment_id>/<version>/
 
 ### Google tests
 
-- Mocked HTTP for Classroom and Gmail.
+- Mocked HTTP for Classroom courses and coursework.
 - Live OAuth tests marked and opt-in.
 
 ### Quality gates
@@ -794,7 +801,6 @@ storage/outputs/<assignment_id>/<version>/
 - Windows build documented for a Windows host.
 - External prerequisites documented:
   - Tectonic is bundled; system TeX and LibreOffice are optional fallbacks.
-  - Tesseract for OCR.
 - Provide `scripts/run.sh`, `scripts/run.bat`, and `scripts/build.py`.
 - Include version information and an application icon.
 
@@ -806,13 +812,13 @@ storage/outputs/<assignment_id>/<version>/
 |---|---|---|
 | 0 | Project scaffolding: uv 3.12, dependencies, settings, logging, `.gitignore`, README skeleton | `uv run` imports the app; empty test suite runs |
 | 1 | Domain models, SQLModel database, repositories, migrations, YAML configs | Config and repository tests pass |
-| 2 | Manual input, PDF/DOCX/TXT parsing, OCR fallback, normalization, deduplication | Parser fixture tests pass |
-| 3 | Gemini provider with model fallback, classifier, section generator, deterministic + semantic evaluator, retry logic | Mocked integration tests cover pass/fail/retry |
+| 2 | Classroom input, normalization, deduplication, student profile, document defaults | Normalization and preference tests pass |
+| 3 | NVIDIA NIM provider with Gemini fallback, classifier, section generator, deterministic + semantic evaluator, retry logic | Mocked integration tests cover pass/fail/retry |
 | 4 | LangGraph graph, SQLite checkpoints, interrupts, resume, recovery | Graph path tests pass |
 | 5 | DOCX generator, built-in template, Tectonic LaTeX PDF export, versioned storage | DOCX reopens correctly; LaTeX PDF generated |
 | 5b | LaTeX template hardening, escaping, sanitization, toolchain fallback chain | Compiles with bundled Tectonic; fallback chain works |
-| 6 | PySide6 UI, workers, review/edit/approve flow, history, settings | Manual end-to-end test and UI smoke tests pass |
-| 7 | Google OAuth, Classroom, Gmail, setup guide, mocked tests | Mocked tests pass; live flow documented |
+| 6 | PySide6 UI, dashboard, single-page preparation, workers, review/edit/approve flow, feedback revision, history, settings | Manual end-to-end test and UI smoke tests pass |
+| 7 | Google OAuth, Classroom courses/coursework, setup guide, mocked tests | Mocked tests pass; live flow documented |
 | 8 | ChromaDB RAG ingestion, retrieval, grounding, citations | Retrieval and grounding tests pass |
 | 9 | PyInstaller spec, cross-platform docs, hardening, final QA | Linux artifact launches; Windows steps documented |
 
@@ -824,8 +830,8 @@ Each phase ends with tests and a short demo path.
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Gemini cost and latency | Slow, expensive runs | Content-hash cache, section-level regeneration, token caps, limited concurrency |
-| Gemini model/quota changes | Pro calls fail | Startup model resolution, Flash fallback, configurable model IDs |
+| LLM cost and latency | Slow, expensive runs | Content-hash cache, section-level regeneration, token caps, limited concurrency |
+| LLM model/quota changes | Calls fail | NVIDIA/Gemini fallback chain, configurable model IDs |
 | Structured-output failures | Invalid content | Simple schemas, JSON repair, one corrective retry |
 | Hallucinated facts or references | Academic integrity | Reference grounding, citation validation, deterministic checks, human review |
 | Fabricated experimental data | Serious integrity issue | `[[MISSING]]` placeholders, no invented results, user prompts |
@@ -833,9 +839,7 @@ Each phase ends with tests and a short demo path.
 | Prompt injection in documents/emails | Unsafe behavior | Untrusted-content wrapping, no tool execution, validators, audit log |
 | Google OAuth complexity | Integration blocked | Setup guide, mock mode, actionable errors |
 | Classroom API limitations | Missing assignments | Manual upload fallback |
-| Gmail search noise | Wrong assignment selected | Filters, attachment matching, user confirmation |
 | Duplicate assignments | Repeated work | Content hash and external source IDs |
-| OCR quality | Poor extraction | Confidence warning, editable text, manual correction |
 | TeX toolchain missing or large | No PDF export | Bundle Tectonic; fall back to system TeX, LibreOffice, or DOCX-only |
 | Tectonic first-run package downloads | Offline compile fails | Pre-warm cache at build time; document offline bundle |
 | LaTeX compile errors | Export fails | Escaping, sanitization, captured logs, user-friendly errors, fallback |
@@ -851,14 +855,13 @@ Each phase ends with tests and a short demo path.
 
 ## 19. Prerequisites
 
-- Gemini API key in `.env` or keyring.
-- Billing enabled on the Google Cloud project for Gemini Pro API quota; otherwise the app falls back to Flash.
-- Google Cloud project with Classroom API and Gmail API enabled.
+- NVIDIA NIM API key in `.env` (primary provider).
+- Optional Gemini API key and billing for the fallback provider.
+- Google Cloud project with the Classroom API enabled.
 - OAuth desktop client JSON (`credentials.json`).
 - Tectonic binary bundled with the app (recommended); no system TeX or LibreOffice required.
 - Optional: system TeX distribution or LibreOffice as fallbacks.
 - Network access on first Tectonic compile unless the package cache is pre-warmed.
-- Tesseract installed for OCR of scanned PDFs.
 - A Windows host for the Windows EXE build.
 - Python 3.12 available through `uv`.
 
@@ -868,21 +871,23 @@ Each phase ends with tests and a short demo path.
 
 The full build is complete when:
 
-1. A user can input an assignment manually or from a local file.
-2. The system classifies it into one of three categories with a confidence and rationale.
-3. Missing information is requested before generation when needed.
-4. Content is generated section-by-section with structured schemas.
-5. Deterministic and semantic evaluation run independently.
-6. Failed sections are regenerated up to three times.
-7. The user can review, edit, regenerate, and approve.
-8. DOCX and a high-quality LaTeX PDF (via Tectonic) are exported and stored with version history.
-9. Google Classroom and Gmail imports work with credentials and are mocked in tests.
-10. Optional RAG retrieval improves grounding with citations.
-11. Workflow state survives crashes and can be resumed.
-12. Tests, lint, and type checks pass.
-13. A packaged Linux build launches; Windows packaging steps are documented.
-14. Secrets are never committed or embedded.
-15. Human approval remains mandatory before final export.
+1. A student can connect Google Classroom, select a class, and select a published assignment.
+2. The preparation page pre-fills the student profile and document defaults and allows all details to be changed before generation.
+3. The system classifies the assignment into one of three categories with a confidence and rationale.
+4. Missing information is requested before generation when needed.
+5. Content is generated section-by-section with structured schemas.
+6. Deterministic and semantic evaluation run independently.
+7. Failed sections are regenerated up to three times.
+8. The student can review, edit, regenerate failed sections, or regenerate with written feedback.
+9. DOCX and a high-quality LaTeX PDF (via Tectonic) are exported with a front page, optional table of contents, and version history.
+10. Classroom courses and coursework imports work with credentials and are mocked in tests.
+11. Exported documents can be reopened or revised with feedback from history.
+12. Optional RAG retrieval improves grounding with citations.
+13. Workflow state survives crashes and can be resumed.
+14. Tests, lint, and type checks pass for changed modules.
+15. A packaged Linux build launches; Windows packaging steps are documented.
+16. Secrets are never committed or embedded.
+17. Human approval remains mandatory before final export.
 
 ---
 
@@ -894,4 +899,4 @@ The full build is complete when:
 4. Confirm whether the built-in DOCX template is acceptable until a university template is provided.
 5. Confirm whether RAG should be enabled by default or opt-in per category.
 6. Confirm the Windows build environment and who will produce the first EXE.
-7. Confirm whether billing will be enabled for Gemini Pro API quota or the app should default to `gemini-3.6-flash`.
+7. Confirm whether NVIDIA NIM remains the default provider or Gemini Pro billing is enabled.

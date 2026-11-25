@@ -55,7 +55,7 @@ rubric:
     description: "Flawless IEEE citations, tables, figure descriptions, and equations."
 
 rag:
-  enabled: false
+  enabled: true
   collections: []
 
 references:

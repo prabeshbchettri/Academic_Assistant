@@ -172,15 +172,15 @@ class HomePage(QWidget):
         classroom.clicked.connect(lambda: self.open_input.emit("classroom"))
         actions.addWidget(classroom)
 
-        manual = QPushButton("New from text")
-        manual.setObjectName("SecondaryButton")
-        manual.clicked.connect(lambda: self.open_input.emit("manual"))
-        actions.addWidget(manual)
+        history = QPushButton("Document history")
+        history.setObjectName("SecondaryButton")
+        history.clicked.connect(lambda: self.open_history.emit())
+        actions.addWidget(history)
 
-        upload = QPushButton("Import file")
-        upload.setObjectName("SecondaryButton")
-        upload.clicked.connect(lambda: self.open_input.emit("file"))
-        actions.addWidget(upload)
+        settings = QPushButton("Edit profile")
+        settings.setObjectName("SecondaryButton")
+        settings.clicked.connect(lambda: self.open_settings.emit())
+        actions.addWidget(settings)
 
         actions.addStretch()
         return actions
@@ -211,10 +211,10 @@ class HomePage(QWidget):
         self.connect_btn.clicked.connect(lambda: self.sync_classroom())
         layout.addWidget(self.connect_btn)
 
-        skip = QPushButton("Use without Classroom")
-        skip.setObjectName("SecondaryButton")
-        skip.clicked.connect(lambda: self.open_input.emit("manual"))
-        layout.addWidget(skip)
+        settings = QPushButton("Open settings")
+        settings.setObjectName("SecondaryButton")
+        settings.clicked.connect(lambda: self.open_settings.emit())
+        layout.addWidget(settings)
         return self.auth_card
 
     def _build_connection_bar(self) -> QFrame:
@@ -389,6 +389,8 @@ class HomePage(QWidget):
     def _clear_course_grid(self) -> None:
         while self.course_grid.count():
             item = self.course_grid.takeAt(0)
+            if item is None:
+                continue
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()

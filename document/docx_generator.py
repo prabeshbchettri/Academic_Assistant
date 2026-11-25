@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 import docx
@@ -22,6 +23,42 @@ NAVY = RGBColor(0x1B, 0x36, 0x5D)
 MUTED = RGBColor(0x62, 0x7D, 0x98)
 
 
+def _effective_formatting(report: ReportContent, config: CategoryConfig) -> CategoryConfig:
+    """Applies per-report document_preferences overrides cleanly onto CategoryConfig."""
+    doc_prefs = (report.metadata or {}).get("document_preferences", {}) or {}
+    if not doc_prefs:
+        return config
+
+    updated_fmt = config.formatting.model_copy(
+        update={
+            "font": str(doc_prefs.get("font_family") or config.formatting.font),
+            "font_size": int(doc_prefs.get("font_size") or config.formatting.font_size),
+            "line_spacing": float(
+                doc_prefs.get("line_spacing") or config.formatting.line_spacing
+            ),
+            "citation_style": str(
+                doc_prefs.get("citation_style") or config.formatting.citation_style
+            ),
+        }
+    )
+    if doc_prefs.get("margin_inches"):
+        m = float(doc_prefs["margin_inches"])
+        updated_fmt.margins_inches = updated_fmt.margins_inches.model_copy(
+            update={"top": m, "bottom": m, "left": max(1.25, m), "right": m}
+        )
+    return config.model_copy(update={"formatting": updated_fmt})
+
+
+def _split_institution_campus(institution: str, campus: str) -> tuple[str, str]:
+    inst = (institution or "").strip()
+    camp = (campus or "").strip()
+    if inst and camp and camp.lower() in inst.lower():
+        stripped = re.sub(r",?\s*" + re.escape(camp), "", inst, flags=re.IGNORECASE).strip(" ,")
+        if stripped:
+            return stripped, camp
+    return inst or "Institute of Engineering", camp
+
+
 class DocxGenerator:
     def __init__(self, template_path: Path | None = None):
         self.template_path = template_path
@@ -37,20 +74,21 @@ class DocxGenerator:
         assignment_id: int = 1,
         version: int = 1,
     ) -> Path:
+        effective_cfg = _effective_formatting(report, config)
         out_dir = settings.storage_dir / "outputs" / str(assignment_id) / f"v{version}"
         out_dir.mkdir(parents=True, exist_ok=True)
         docx_path = out_dir / "report.docx"
 
         doc = docx.Document()
         section = doc.sections[0]
-        section.top_margin = Inches(config.formatting.margins_inches.top)
-        section.bottom_margin = Inches(config.formatting.margins_inches.bottom)
-        section.left_margin = Inches(config.formatting.margins_inches.left)
-        section.right_margin = Inches(config.formatting.margins_inches.right)
+        section.top_margin = Inches(effective_cfg.formatting.margins_inches.top)
+        section.bottom_margin = Inches(effective_cfg.formatting.margins_inches.bottom)
+        section.left_margin = Inches(effective_cfg.formatting.margins_inches.left)
+        section.right_margin = Inches(effective_cfg.formatting.margins_inches.right)
         section.different_first_page_header_footer = True
 
-        self._configure_styles(doc, config)
-        self._add_header_footer(section, report, config)
+        self._configure_styles(doc, effective_cfg)
+        self._add_header_footer(section, report, effective_cfg)
         self._enable_field_updates(doc)
         doc.core_properties.title = report.title
         author = report.author
@@ -59,20 +97,20 @@ class DocxGenerator:
         doc.core_properties.author = author
 
         if report.front_page:
-            self._add_front_page(doc, report.front_page, config)
+            self._add_front_page(doc, report.front_page, effective_cfg)
             doc.add_page_break()
         else:
             title_p = doc.add_paragraph()
             title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             title_run = title_p.add_run(report.title)
-            self._style_run(title_run, config, size=22, bold=True, color=NAVY)
+            self._style_run(title_run, effective_cfg, size=22, bold=True, color=NAVY)
 
             meta_p = doc.add_paragraph()
             meta_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             meta_run = meta_p.add_run(
                 f"Course: {report.course}  |  Date: {report.date or '2026'}"
             )
-            self._style_run(meta_run, config, size=11, italic=True, color=MUTED)
+            self._style_run(meta_run, effective_cfg, size=11, italic=True, color=MUTED)
             doc.add_paragraph()
 
         if report.include_toc and report.front_page:
@@ -85,24 +123,26 @@ class DocxGenerator:
             abstract_p = doc.add_paragraph()
             abstract_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             abstract_run = abstract_p.add_run(report.abstract)
-            self._style_run(abstract_run, config, size=10.5, italic=True)
+            self._style_run(abstract_run, effective_cfg, size=10.5, italic=True)
             doc.add_paragraph()
 
         table_number = 1
         for index, sec in enumerate(report.sections, start=1):
             heading_text = (
                 f"{index}. {sec.heading}"
-                if config.formatting.heading_numbering
+                if effective_cfg.formatting.heading_numbering
                 else sec.heading
             )
             heading = doc.add_heading(heading_text, level=1)
             heading.paragraph_format.space_before = Pt(14)
             heading.paragraph_format.space_after = Pt(6)
 
-            add_markdown_paragraph(doc, sec.body_markdown)
+            add_markdown_paragraph(
+                doc, sec.body_markdown, font_name=effective_cfg.formatting.font
+            )
 
             for table_data in sec.tables:
-                self._add_data_table(doc, table_data, config, table_number)
+                self._add_data_table(doc, table_data, effective_cfg, table_number)
                 table_number += 1
 
         if report.references:
@@ -118,7 +158,7 @@ class DocxGenerator:
                     f"{reference.venue}, {reference.year}."
                 )
                 ref_run = ref_p.add_run(ref_text)
-                self._style_run(ref_run, config, size=9.5)
+                self._style_run(ref_run, effective_cfg, size=9.5)
 
         doc.save(str(docx_path))
         logger.info("Saved DOCX document at %s", docx_path)
@@ -268,16 +308,20 @@ class DocxGenerator:
             doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
             doc.paragraphs[-1].paragraph_format.space_after = Pt(8)
 
+        inst_clean, camp_clean = _split_institution_campus(
+            front_page.institution, front_page.campus
+        )
         self._centered_line(doc, front_page.university.upper(), 12, config, bold=True)
         self._centered_line(
             doc,
-            front_page.institution,
+            inst_clean,
             19,
             config,
             bold=True,
             color=NAVY,
         )
-        self._centered_line(doc, front_page.campus, 12, config)
+        if camp_clean:
+            self._centered_line(doc, camp_clean, 12, config)
         if front_page.department:
             self._centered_line(doc, front_page.department, 12, config)
 
@@ -330,7 +374,6 @@ class DocxGenerator:
                 [("", submitted_to)],
                 config,
             )
-
 
     def _detail_cell(
         self,
@@ -410,6 +453,8 @@ class DocxGenerator:
         config: CategoryConfig,
         table_number: int,
     ) -> None:
+        if not table_data.headers:
+            return
         caption_p = doc.add_paragraph()
         caption_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         caption_p.paragraph_format.space_before = Pt(8)
@@ -417,7 +462,8 @@ class DocxGenerator:
         caption_run = caption_p.add_run(f"Table {table_number}: {table_data.caption}")
         self._style_run(caption_run, config, size=9.5, italic=True, color=MUTED)
 
-        table = doc.add_table(rows=1 + len(table_data.rows), cols=len(table_data.headers))
+        col_count = len(table_data.headers)
+        table = doc.add_table(rows=1 + len(table_data.rows), cols=col_count)
         table.style = "Table Grid"
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         table.autofit = True
@@ -431,8 +477,9 @@ class DocxGenerator:
             self._style_run(run, config, size=9.5, bold=True)
             self._set_cell_background(cell, "E8EEF5")
 
-        for row_index, row in enumerate(table_data.rows, start=1):
-            for column, value in enumerate(row):
+        for row_index, raw_row in enumerate(table_data.rows, start=1):
+            padded_row = (list(raw_row) + [""] * col_count)[:col_count]
+            for column, value in enumerate(padded_row):
                 cell = table.cell(row_index, column)
                 cell.text = ""
                 paragraph = cell.paragraphs[0]

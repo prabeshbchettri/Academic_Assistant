@@ -1,5 +1,6 @@
 import tempfile
 from pathlib import Path
+
 from ai.llm.mock import MockProvider
 from ai.retriever import RagRetriever, chunk_text
 
@@ -17,8 +18,9 @@ def test_rag_index_and_retrieve():
         course = "physics_test"
         doc_name = "lab_manual.txt"
         content = (
-            "The Wheatstone bridge is an electrical circuit used to measure an unknown electrical resistance "
-            "by balancing two legs of a bridge circuit. Ohm's law states that current is directly proportional to voltage."
+            "The Wheatstone bridge is an electrical circuit used to measure an unknown "
+            "electrical resistance by balancing two legs of a bridge circuit. "
+            "Ohm's law states that current is directly proportional to voltage."
         )
 
         chunk_count = retriever.index_document(course, doc_name, content)

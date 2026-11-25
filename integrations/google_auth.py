@@ -5,7 +5,7 @@ import logging
 import os
 from collections.abc import Iterable, Sequence
 
-# Fix: Allow oauthlib to accept scopes returned by Google without crashing on harmless scope differences
+# Allow oauthlib to accept Google's returned scopes without crashing on harmless differences.
 os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
 import keyring
@@ -26,7 +26,6 @@ STUDENT_SCOPES: tuple[str, ...] = (
     "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
     "https://www.googleapis.com/auth/classroom.courseworkmaterials.readonly",
     "https://www.googleapis.com/auth/classroom.student-submissions.me.readonly",
-    "https://www.googleapis.com/auth/gmail.readonly",
 )
 
 

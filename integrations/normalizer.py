@@ -13,7 +13,9 @@ def sanitize_text(text: str) -> str:
     # Normalize unicode to NFC
     text = unicodedata.normalize("NFC", text)
     # Remove control characters except standard whitespace \n \r \t
-    text = "".join(ch for ch in text if ch in ("\n", "\r", "\t") or unicodedata.category(ch)[0] != "C")
+    text = "".join(
+        ch for ch in text if ch in ("\n", "\r", "\t") or unicodedata.category(ch)[0] != "C"
+    )
     # Normalize line breaks
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     # Collapse 3+ consecutive newlines
@@ -38,7 +40,11 @@ def extract_title(text: str, fallback: str = "Academic Assignment") -> str:
 
     # Check for title patterns like "Title: ...", "Assignment: ...", "Lab Report: ..."
     for line in lines[:5]:
-        match = re.match(r"^(?:Title|Assignment|Lab|Experiment)\s*[:\-]\s*(.+)$", line, re.IGNORECASE)
+        match = re.match(
+            r"^(?:Title|Assignment|Lab|Experiment)\s*[:\-]\s*(.+)$",
+            line,
+            re.IGNORECASE,
+        )
         if match:
             return match.group(1).strip()
 

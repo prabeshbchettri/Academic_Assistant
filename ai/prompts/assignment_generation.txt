@@ -10,8 +10,29 @@ Target Word Count: {{ min_words }} - {{ max_words }} words.
 Retrieved References / Knowledge:
 {{ references_context }}
 
+{% if available_references %}
+Available Grounded Citation Keys (ONLY cite from this list):
+{{ available_references }}
+{% endif %}
+
 Previous Sections Drafted:
 {{ prior_sections_summary }}
+
+Document Type: {{ document_type }}
+Student Formatting Notes:
+{{ format_notes }}
+
+Additional Student Notes:
+{{ assignment_notes }}
+{% if feedback %}
+Reviewer Feedback to address:
+{{ feedback }}
+{% endif %}
+
+{% if revision_feedback %}
+Revision Feedback to address:
+{{ revision_feedback }}
+{% endif %}
 
 Requirements:
 - Write coherent, detailed Markdown body paragraphs for this section.

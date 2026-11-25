@@ -53,7 +53,7 @@ rubric:
     description: "Document follows required lab structure and IEEE citation style."
 
 rag:
-  enabled: false
+  enabled: true
   collections: []
 
 references:

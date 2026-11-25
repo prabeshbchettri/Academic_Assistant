@@ -8,12 +8,14 @@ from langgraph.types import Command
 from PySide6.QtCore import QObject, QThread, Signal
 
 from ai.llm.base import LLMProvider
-from ai.llm.gemini import GeminiProvider
-from ai.llm.mock import MockProvider
-from app.settings import settings
+from ai.llm.factory import build_provider
 from database.db import get_session
-from database.repositories import AssignmentRepository
-from integrations.classroom.client import build_classroom_service, list_courses
+from database.repositories import AssignmentRepository, WorkflowRunRepository
+from integrations.classroom.client import (
+    build_classroom_service,
+    list_courses,
+    list_coursework,
+)
 from models.assignment import RawInput
 from workflow.graph import build_academic_workflow
 from workflow.state import WorkflowState
@@ -31,6 +33,23 @@ class ClassroomCoursesWorker(QThread):
             self.courses_ready.emit(list_courses(service))
         except Exception as exc:
             logger.exception("Could not load Classroom courses: %s", exc)
+            self.error.emit(str(exc))
+
+
+class ClassroomCourseworkWorker(QThread):
+    coursework_ready = Signal(list)
+    error = Signal(str)
+
+    def __init__(self, course_id: str, parent: QObject | None = None):
+        super().__init__(parent)
+        self.course_id = course_id
+
+    def run(self) -> None:
+        try:
+            service = build_classroom_service()
+            self.coursework_ready.emit(list_coursework(service, self.course_id))
+        except Exception as exc:
+            logger.exception("Could not load Classroom coursework: %s", exc)
             self.error.emit(str(exc))
 
 
@@ -62,28 +81,39 @@ class WorkflowWorker(QThread):
 
     def run(self) -> None:
         try:
-            # Select LLM provider
-            if self.use_mock_llm or not settings.gemini_api_key_str:
-                provider: LLMProvider = MockProvider()
-            else:
-                provider = GeminiProvider(api_key=settings.gemini_api_key_str)
-
+            provider: LLMProvider = build_provider(use_mock=self.use_mock_llm)
             app_graph = build_academic_workflow(llm=provider)
             config = {"configurable": {"thread_id": self.thread_id}}
 
-            # If starting a new run, persist initial assignment record in DB
             if self.resume_command is None and self.raw_input is not None:
+                editing_id = (self.raw_input.metadata or {}).get("editing_assignment_id")
                 with get_session() as session:
                     repo = AssignmentRepository(session)
-                    record = repo.create(
-                        title=self.raw_input.title or "New Assignment",
-                        raw_text=self.raw_input.raw_text,
-                        normalized_text="",
-                        content_hash="",
-                        source_type=self.raw_input.source_type.value,
-                        category=self.category or "assignment",
+                    existing = (
+                        repo.get_by_id(int(str(editing_id)))
+                        if isinstance(editing_id, (int, str)) and str(editing_id).isdigit()
+                        else None
                     )
-                    self.assignment_id = record.id or 1
+                    if existing is not None:
+                        self.assignment_id = existing.id or 1
+                        repo.update_status(self.assignment_id, "in_progress")
+                    else:
+                        record = repo.create(
+                            title=self.raw_input.title or "New Assignment",
+                            raw_text=self.raw_input.raw_text,
+                            normalized_text="",
+                            content_hash="",
+                            source_type=self.raw_input.source_type.value,
+                            category=self.category or "assignment",
+                        )
+                        self.assignment_id = record.id or 1
+
+                    WorkflowRunRepository(session).save_or_update(
+                        thread_id=self.thread_id,
+                        assignment_id=self.assignment_id,
+                        status="started",
+                        current_node="start",
+                    )
 
                 initial_state: WorkflowState = {
                     "assignment_id": self.assignment_id,
@@ -97,7 +127,6 @@ class WorkflowWorker(QThread):
                 }
                 stream = app_graph.stream(initial_state, config, stream_mode="updates")
             else:
-                # Resuming from interrupt
                 self.progress_signal.emit("resume", "Resuming workflow after human input...")
                 stream = app_graph.stream(self.resume_command, config, stream_mode="updates")
 
@@ -106,17 +135,24 @@ class WorkflowWorker(QThread):
                     msg = f"Completed node: {node_name}"
                     self.progress_signal.emit(node_name, msg)
 
-            # Check if workflow reached an interrupt or finished
             snapshot = app_graph.get_state(config)
             if snapshot.tasks:
                 task = snapshot.tasks[0]
                 if task.interrupts:
                     interrupt_val = task.interrupts[0].value
-                    if isinstance(interrupt_val, dict):
-                        interrupt_type = interrupt_val.get("type", "unknown")
-                    else:
-                        interrupt_type = "unknown"
+                    interrupt_type = (
+                        interrupt_val.get("type", "unknown")
+                        if isinstance(interrupt_val, dict)
+                        else "unknown"
+                    )
                     payload = interrupt_val if isinstance(interrupt_val, dict) else {}
+                    with get_session() as session:
+                        WorkflowRunRepository(session).save_or_update(
+                            thread_id=self.thread_id,
+                            assignment_id=self.assignment_id,
+                            status="interrupted",
+                            current_node=interrupt_type,
+                        )
                     self.interrupt_signal.emit(interrupt_type, payload)
                     return
 
@@ -128,4 +164,15 @@ class WorkflowWorker(QThread):
         except Exception as exc:
             logger.exception("Workflow worker encountered an exception: %s", exc)
             self.resume_command = None
+            try:
+                with get_session() as session:
+                    WorkflowRunRepository(session).save_or_update(
+                        thread_id=self.thread_id or "unknown",
+                        assignment_id=self.assignment_id,
+                        status="error",
+                        current_node="error",
+                        error_message=str(exc)[:1000],
+                    )
+            except Exception:
+                pass
             self.error_signal.emit(str(exc))

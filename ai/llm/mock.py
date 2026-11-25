@@ -25,6 +25,8 @@ class MockProvider(LLMProvider):
 
     def __init__(self, force_pass: bool = True):
         self.force_pass = force_pass
+        self.last_model_used = "mock-deterministic"
+        self.last_usage = {"prompt_tokens": 120, "completion_tokens": 80, "total_tokens": 200}
 
     def generate_structured(
         self,
@@ -40,13 +42,13 @@ class MockProvider(LLMProvider):
                     confidence=0.95,
                     rationale="Detected laboratory apparatus and experimental procedure keywords.",
                     method="mock",
-                )  # type: ignore
+                )  # type: ignore[return-value]
             return ClassificationResult(
                 category=Category.ASSIGNMENT,
                 confidence=0.92,
                 rationale="Detected standard assignment topic and theoretical questions.",
                 method="mock",
-            )  # type: ignore
+            )  # type: ignore[return-value]
 
         if schema == SectionDraft:
             heading = "Section"
@@ -56,18 +58,49 @@ class MockProvider(LLMProvider):
                     break
 
             sample_body = (
-                f"### {heading}\n\n"
-                f"This section discusses the core academic principles and analysis regarding {heading.lower()}. "
-                f"The experimental methodology followed established standards and guidelines [1]. "
-                f"Empirical observations align with theoretical predictions within acceptable margins of error.\n\n"
-                f"Further investigation into the results confirms that all criteria specified in the academic requirements have been met."
+                f"This section presents the core academic principles and analysis regarding "
+                f"{heading.lower()}. The methodology follows established engineering standards "
+                f"and instructions provided for the coursework.\n\n"
+                f"Calculated parameters and structured derivations confirm that all criteria "
+                f"specified in the prompt requirements have been systematically addressed."
             )
             return SectionDraft(
                 heading=heading,
                 body_markdown=sample_body,
-                citations=["[1]"],
+                citations=[],
                 word_count=len(sample_body.split()),
-            )  # type: ignore
+            )  # type: ignore[return-value]
+
+        if schema == SectionEvaluation:
+            passed = self.force_pass
+            return SectionEvaluation(
+                section_heading="Section",
+                scores=[
+                    SectionScore(
+                        criterion_id="clarity",
+                        score=0.94 if passed else 0.42,
+                        comments="Mock clarity evaluation.",
+                    ),
+                    SectionScore(
+                        criterion_id="accuracy",
+                        score=0.92 if passed else 0.40,
+                        comments="Mock accuracy evaluation.",
+                    ),
+                    SectionScore(
+                        criterion_id="completeness",
+                        score=0.90 if passed else 0.38,
+                        comments="Mock completeness evaluation.",
+                    ),
+                    SectionScore(
+                        criterion_id="formatting",
+                        score=0.95 if passed else 0.50,
+                        comments="Mock formatting evaluation.",
+                    ),
+                ],
+                passed=passed,
+                issues=[] if passed else ["Needs deeper technical derivation and evidence."],
+                suggestions=[] if passed else ["Expand analysis with concrete data points."],
+            )  # type: ignore[return-value]
 
         if schema == EvaluationResult:
             passed = self.force_pass
@@ -75,12 +108,22 @@ class MockProvider(LLMProvider):
                 DeterministicFinding(
                     check_name="mock_check",
                     passed=passed,
-                    message="All checks passed in mock evaluation" if passed else "Section failed mock check",
+                    message=(
+                        "All checks passed in mock evaluation"
+                        if passed
+                        else "Section failed mock check"
+                    ),
                 )
             ]
             sec_eval = SectionEvaluation(
                 section_heading="Overview",
-                scores=[SectionScore(criterion_id="clarity", score=0.95 if passed else 0.4, comments="Good")],
+                scores=[
+                    SectionScore(
+                        criterion_id="clarity",
+                        score=0.95 if passed else 0.4,
+                        comments="Good",
+                    )
+                ],
                 passed=passed,
                 issues=[] if passed else ["Needs more detailed derivations"],
                 suggestions=[],
@@ -94,9 +137,8 @@ class MockProvider(LLMProvider):
                 section_evaluations=[sec_eval],
                 failed_sections=[] if passed else ["Overview"],
                 general_feedback="Mock evaluation complete.",
-            )  # type: ignore
+            )  # type: ignore[return-value]
 
-        # Default fallback for other models: construct empty instance
         return schema.model_validate({})
 
     def generate_text(
@@ -108,7 +150,6 @@ class MockProvider(LLMProvider):
         return f"Mock response for prompt: {user_prompt[:50]}..."
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        # Deterministic pseudo-embedding of 768 dimensions based on SHA256
         embeddings = []
         for text in texts:
             h = hashlib.sha256(text.encode("utf-8")).digest()

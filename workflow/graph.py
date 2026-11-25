@@ -28,7 +28,6 @@ def build_academic_workflow(llm: LLMProvider | None = None, checkpointer=None):
     provider = llm or MockProvider()
     builder = StateGraph(WorkflowState)
 
-    # Add nodes
     builder.add_node("normalize", normalize_node)
     builder.add_node("classify", partial(classify_node, llm=provider))
     builder.add_node("load_config", load_config_node)
@@ -41,7 +40,6 @@ def build_academic_workflow(llm: LLMProvider | None = None, checkpointer=None):
     builder.add_node("export", export_node)
     builder.add_node("persist", persist_node)
 
-    # Add linear edges
     builder.add_edge(START, "normalize")
     builder.add_edge("normalize", "classify")
     builder.add_edge("classify", "load_config")
@@ -50,7 +48,6 @@ def build_academic_workflow(llm: LLMProvider | None = None, checkpointer=None):
     builder.add_edge("retrieve_references", "generate_content")
     builder.add_edge("generate_content", "evaluate_output")
 
-    # Conditional edge after evaluation (retry vs human review)
     builder.add_conditional_edges(
         "evaluate_output",
         route_after_evaluation,
@@ -61,13 +58,14 @@ def build_academic_workflow(llm: LLMProvider | None = None, checkpointer=None):
     )
     builder.add_edge("regenerate_failed", "evaluate_output")
 
-    # Conditional edge after human review
     builder.add_conditional_edges(
         "human_review",
         route_after_human_review,
         {
             "export": "export",
             "regenerate_failed": "regenerate_failed",
+            "human_review": "human_review",
+            "persist": "persist",
         },
     )
 

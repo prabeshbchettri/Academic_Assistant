@@ -25,7 +25,8 @@ class DocumentPreviewWidget(QWidget):
 
         md_parts = [
             f"# {report.title}\n",
-            f"**Course:** {report.course} | **Date:** {report.date} | **Author:** {report.author}\n",
+            f"**Course:** {report.course} | **Date:** {report.date} | "
+            f"**Author:** {report.author}\n",
             "---\n",
         ]
 
@@ -57,15 +58,19 @@ class DocumentPreviewWidget(QWidget):
         <html>
         <head>
         <style>
-            body {{ font-family: 'Liberation Serif', Georgia, serif; line-height: 1.6; color: #1a202c; padding: 20px; }}
-            h1 {{ color: #1B365D; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px; font-size: 24px; }}
+            body {{ font-family: 'Liberation Serif', Georgia, serif;
+                line-height: 1.6; color: #1a202c; padding: 20px; }}
+            h1 {{ color: #1B365D; border-bottom: 2px solid #E2E8F0;
+                padding-bottom: 8px; font-size: 24px; }}
             h2 {{ color: #2D3748; margin-top: 24px; font-size: 18px; }}
             h3 {{ color: #4A5568; font-size: 15px; }}
             table {{ border-collapse: collapse; width: 100%; margin: 16px 0; }}
             th, td {{ border: 1px solid #CBD5E1; padding: 8px 12px; text-align: left; }}
             th {{ background-color: #F1F5F9; font-weight: bold; }}
-            code {{ background-color: #EDF2F7; padding: 2px 6px; border-radius: 4px; font-family: monospace; }}
-            blockquote {{ border-left: 4px solid #CBD5E1; margin: 0; padding-left: 16px; color: #718096; }}
+            code {{ background-color: #EDF2F7; padding: 2px 6px;
+                border-radius: 4px; font-family: monospace; }}
+            blockquote {{ border-left: 4px solid #CBD5E1; margin: 0;
+                padding-left: 16px; color: #718096; }}
         </style>
         </head>
         <body>{html}</body>

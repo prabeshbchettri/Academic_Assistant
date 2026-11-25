@@ -114,7 +114,9 @@ def load_category_config(category: str, base_dir: Path | None = None) -> Categor
 
     config_path = base_dir / f"{category}.yaml"
     if not config_path.exists():
-        raise FileNotFoundError(f"Configuration file for category '{category}' not found at {config_path}")
+        raise FileNotFoundError(
+            f"Configuration file for category '{category}' not found at {config_path}"
+        )
 
     raw_yaml = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     config = CategoryConfig.model_validate(raw_yaml)

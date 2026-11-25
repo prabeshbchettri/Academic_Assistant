@@ -45,7 +45,7 @@ rubric:
     description: "Proper academic formatting, section hierarchy, and citations."
 
 rag:
-  enabled: false
+  enabled: true
   collections: []
 
 references:

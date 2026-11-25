@@ -44,7 +44,10 @@ def test_workflow_end_to_end_mock():
             "raw_input": RawInput(
                 source_type=SourceType.MANUAL,
                 title="Physics: Harmonic Oscillator",
-                raw_text="Analyze simple harmonic motion with k = 50 N/m and m = 2 kg. Measure period T.",
+                raw_text=(
+                    "Analyze simple harmonic motion with k = 50 N/m and m = 2 kg. "
+                    "Measure period T."
+                ),
             ).model_dump(),
             "category": "initial_lab",
             "retry_count": 0,
@@ -54,7 +57,7 @@ def test_workflow_end_to_end_mock():
         }
 
         # Run stream until interrupt (human review)
-        for chunk in graph.stream(initial_state, config, stream_mode="updates"):
+        for _chunk in graph.stream(initial_state, config, stream_mode="updates"):
             pass
 
         snapshot = graph.get_state(config)
@@ -65,7 +68,7 @@ def test_workflow_end_to_end_mock():
 
         # Resume with human approval
         resume_cmd = Command(resume={"decision": "approve"})
-        for chunk in graph.stream(resume_cmd, config, stream_mode="updates"):
+        for _chunk in graph.stream(resume_cmd, config, stream_mode="updates"):
             pass
 
         final_state = graph.get_state(config).values

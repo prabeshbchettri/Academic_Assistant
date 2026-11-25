@@ -10,11 +10,15 @@ LAB_KEYWORDS = [
     "apparatus",
     "procedure",
     "observation",
+    "observations",
     "trials",
     "equipment",
     "experiment",
     "measurement",
+    "measurements",
     "lab report",
+    "lab sheet",
+    "objective",
 ]
 
 FINAL_LAB_KEYWORDS = [
@@ -35,6 +39,8 @@ ASSIGNMENT_KEYWORDS = [
     "essay",
     "review",
     "exercises",
+    "derive",
+    "solve",
 ]
 
 
@@ -45,32 +51,42 @@ class Classifier:
     def classify_by_rules(self, text: str) -> tuple[Category | None, float, str]:
         lower = text.lower()
 
-        final_score = sum(1 for kw in FINAL_LAB_KEYWORDS if re.search(r"\b" + re.escape(kw) + r"\b", lower))
-        lab_score = sum(1 for kw in LAB_KEYWORDS if re.search(r"\b" + re.escape(kw) + r"\b", lower))
-        assign_score = sum(1 for kw in ASSIGNMENT_KEYWORDS if re.search(r"\b" + re.escape(kw) + r"\b", lower))
+        final_score = sum(
+            1 for kw in FINAL_LAB_KEYWORDS if re.search(r"\b" + re.escape(kw) + r"\b", lower)
+        )
+        lab_score = sum(
+            1 for kw in LAB_KEYWORDS if re.search(r"\b" + re.escape(kw) + r"\b", lower)
+        )
+        assign_score = sum(
+            1 for kw in ASSIGNMENT_KEYWORDS if re.search(r"\b" + re.escape(kw) + r"\b", lower)
+        )
 
         if final_score >= 2 or ("final" in lower and lab_score >= 2):
             return (
                 Category.FINAL_LAB,
                 0.90,
-                f"Matched {final_score} final lab indicators (e.g., error analysis, comprehensive report).",
+                f"Matched {final_score} final lab indicators (error analysis, project/final lab).",
             )
-        elif lab_score >= 2 or "experiment" in lower or "lab report" in lower:
+        if lab_score >= 2 or "experiment" in lower or "lab report" in lower or "lab sheet" in lower:
             return (
                 Category.INITIAL_LAB,
                 0.88,
                 f"Matched {lab_score} laboratory keywords (apparatus, procedure, observations).",
             )
-        elif assign_score >= 1 or "question" in lower or "problem" in lower:
+        if assign_score >= 1 or "question" in lower or "problem" in lower:
             return (
                 Category.ASSIGNMENT,
                 0.85,
-                "Matched assignment keywords (questions, homework, essay).",
+                "Matched assignment keywords (questions, homework, problem set).",
             )
 
         return None, 0.0, "No definitive rule matches."
 
-    def classify(self, normalized: NormalizedInput, manual_category: Category | None = None) -> ClassificationResult:
+    def classify(
+        self,
+        normalized: NormalizedInput,
+        manual_category: Category | None = None,
+    ) -> ClassificationResult:
         if manual_category:
             return ClassificationResult(
                 category=manual_category,
@@ -79,7 +95,8 @@ class Classifier:
                 method="manual",
             )
 
-        rule_cat, rule_conf, rule_rationale = self.classify_by_rules(normalized.cleaned_text)
+        combined = f"{normalized.title}\n{normalized.cleaned_text}".strip()
+        rule_cat, rule_conf, rule_rationale = self.classify_by_rules(combined)
         if rule_cat is not None and rule_conf >= 0.85:
             return ClassificationResult(
                 category=rule_cat,
@@ -88,22 +105,23 @@ class Classifier:
                 method="rule",
             )
 
-        # Fall back to LLM classification
         if self.llm is not None:
             wrapped_text, _ = wrap_untrusted_data(normalized.cleaned_text[:3000])
             system_prompt = (
                 "You are an academic classifier. Classify the student assignment into one of: "
-                "'assignment', 'initial_lab', 'final_lab'. Output valid JSON conforming to the schema."
+                "'assignment', 'initial_lab', 'final_lab'. "
+                "Output valid JSON conforming to the schema."
             )
             user_prompt = f"Title: {normalized.title}\nAssignment Text:\n{wrapped_text}"
             try:
-                result = self.llm.generate_structured(ClassificationResult, system_prompt, user_prompt)
+                result = self.llm.generate_structured(
+                    ClassificationResult, system_prompt, user_prompt
+                )
                 result.method = "llm"
                 return result
             except Exception:
                 pass
 
-        # Final default fallback
         return ClassificationResult(
             category=Category.ASSIGNMENT,
             confidence=0.70,

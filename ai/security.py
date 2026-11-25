@@ -5,18 +5,22 @@ import secrets
 
 MAX_INPUT_CHARS = 100_000
 
+_INJECTION_PATTERNS = (
+    r"ignore\s+(?:all\s+|any\s+|previous\s+|the\s+above\s+)*instructions",
+    r"disregard\s+(?:all\s+|previous\s+|your\s+)*(?:system\s+)?instructions",
+    r"system\s+prompt\s+override",
+    r"reveal\s+(?:your\s+)?(?:hidden\s+|internal\s+)?system\s+prompt",
+    r"you\s+are\s+now\s+(?:in\s+)?(?:developer|jailbreak|unrestricted)\s+mode",
+    r"<\|(?:system|im_start|im_end)\|>",
+)
+_INJECTION_REGEX = re.compile("|".join(_INJECTION_PATTERNS), re.IGNORECASE)
+
 
 def sanitize_external_input(text: str) -> str:
-    """Caps input length and strips dangerous control characters."""
+    """Caps input length and redacts prompt injection override patterns."""
     if len(text) > MAX_INPUT_CHARS:
         text = text[:MAX_INPUT_CHARS]
-    # Redact common prompt injection patterns
-    redacted = re.sub(
-        r"(?i)(ignore\s+all\s+previous\s+instructions|system\s+prompt\s+override|reveal\s+your\s+system\s+prompt)",
-        "[REDACTED_SUSPICIOUS_PROMPT]",
-        text,
-    )
-    return redacted
+    return _INJECTION_REGEX.sub("[REDACTED_SUSPICIOUS_PROMPT]", text)
 
 
 def wrap_untrusted_data(text: str) -> tuple[str, str]:

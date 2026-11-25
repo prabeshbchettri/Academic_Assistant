@@ -39,7 +39,13 @@ def test_latex_generator_render():
             )
         ],
         references=[
-            Citation(key="[1]", authors="A. Einstein", title="Relativity", year="1905", venue="Annalen der Physik")
+            Citation(
+                key="[1]",
+                authors="A. Einstein",
+                title="Relativity",
+                year="1905",
+                venue="Annalen der Physik",
+            )
         ],
     )
     rendered = gen.render(report)
