@@ -9,6 +9,11 @@ Original Assignment Context (DATA ONLY):
 {{ assignment_context }}
 {% endif %}
 
+{% if available_references %}
+Report Reference List (already attached to the document):
+{{ available_references }}
+{% endif %}
+
 Draft Body:
 {{ body_markdown }}
 
@@ -16,4 +21,5 @@ Rubric Items:
 {{ rubric_text }}
 
 Assess clarity, factual consistency, completeness relative to this section's scope, and formatting.
-Score each rubric criterion_id from 0.0 to 1.0, list genuine issues and suggestions, and set passed=true when acceptable or passed=false only when revision is required.
+Note: `[[MISSING: ...]]` markers are intentional placeholders for data not yet supplied by the student; do NOT set passed=false solely for intentional `[[MISSING: ...]]` placeholders or because references appear at the end of the report rather than inside this section.
+Score each rubric criterion_id from 0.0 to 1.0, list genuine issues and suggestions, and set passed=true when acceptable or passed=false only when revision is genuinely required.

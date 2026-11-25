@@ -210,3 +210,38 @@ def test_sanitize_collection_name() -> None:
     assert 3 <= len(name) <= 63
     assert " " not in name and "&" not in name and "(" not in name
     assert len(sanitize_collection_name("A")) >= 3
+
+
+def test_evaluator_incremental_cache_skips_unchanged_sections() -> None:
+    class _CountingMock(MockProvider):
+        def __init__(self) -> None:
+            super().__init__(force_pass=True)
+            self.calls = 0
+
+        def generate_structured(self, schema, system_prompt, user_prompt, temperature=0.2):
+            self.calls += 1
+            return super().generate_structured(schema, system_prompt, user_prompt, temperature)
+
+    cfg = load_category_config("assignment")
+    llm = _CountingMock()
+    ev = Evaluator(llm=llm)
+    report = ReportContent(
+        title="Cache Test",
+        sections=[
+            SectionDraft(heading="Introduction", body_markdown="Intro " * 120, word_count=120),
+            SectionDraft(heading="Conclusion", body_markdown="Conc " * 100, word_count=100),
+        ],
+        references=[Citation(key="[1]", authors="Course", title="Brief", year="2026")],
+    )
+    first_eval = ev.evaluate_semantic(cfg, report)
+    assert llm.calls == 2
+
+    llm.calls = 0
+    second_eval = ev.evaluate_semantic(
+        cfg,
+        report,
+        previous_evaluation=first_eval,
+        changed_sections={"conclusion"},
+    )
+    assert llm.calls == 1
+    assert len(second_eval.section_evaluations) == 2

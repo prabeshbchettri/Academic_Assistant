@@ -121,7 +121,7 @@ class WorkflowWorker(QThread):
                     "raw_input": self.raw_input.model_dump(mode="json"),
                     "category": self.category or "",
                     "retry_count": 0,
-                    "max_retries": 3,
+                    "max_retries": 2,
                     "status": "started",
                     "node_history": [],
                 }
@@ -132,7 +132,10 @@ class WorkflowWorker(QThread):
 
             for chunk in stream:
                 for node_name, _node_update in chunk.items():
-                    msg = f"Completed node: {node_name}"
+                    if node_name == "regenerate_failed":
+                        msg = "Quality check requested refinement — polishing flagged sections..."
+                    else:
+                        msg = f"Completed step: {node_name}"
                     self.progress_signal.emit(node_name, msg)
 
             snapshot = app_graph.get_state(config)

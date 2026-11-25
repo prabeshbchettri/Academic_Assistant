@@ -236,9 +236,9 @@ class MainWindow(QMainWindow):
                 (
                     "The following details are recommended for this lab report:\n\n"
                     f"{prompt_text}\n\n"
-                    "Tip: If you do not have specific measurements or trial data,\n"
-                    "leave this blank and click OK (or Cancel) to let the AI generate\n"
-                    "realistic simulated observations and benchmarks automatically."
+                    "Tip: Enter any measured trial values/observations here, OR leave blank "
+                    "and click OK to continue with [To be completed] placeholders where "
+                    "your lab measurements belong."
                 ),
                 "",
             )

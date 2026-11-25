@@ -22,6 +22,7 @@ class WorkflowState(TypedDict, total=False):
     retry_count: int
     max_retries: int
     failed_sections: list[str]
+    last_regenerated_sections: list[str]
     human_decision: dict[str, Any]
     status: str  # in_progress, interrupted_missing_info, interrupted_review, approved, failed
     node_history: list[str]

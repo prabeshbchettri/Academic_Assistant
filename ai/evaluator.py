@@ -218,6 +218,8 @@ class Evaluator:
         config: CategoryConfig,
         report: ReportContent,
         normalized: NormalizedInput | None = None,
+        previous_evaluation: EvaluationResult | None = None,
+        changed_sections: set[str] | None = None,
     ) -> EvaluationResult:
         det_passed, findings = self.run_deterministic_checks(config, report)
 
@@ -232,16 +234,36 @@ class Evaluator:
         rubric_text = "\n".join(
             f"- {r.id} (weight {r.weight}): {r.description}" for r in config.rubric
         )
+        available_references = "\n".join(
+            f"{r.key} {r.authors}, {r.title} ({r.venue}, {r.year})" for r in report.references
+        )
         assignment_context = ""
         if normalized is not None:
             wrapped, _ = wrap_untrusted_data(normalized.cleaned_text[:2500])
             assignment_context = wrapped
 
+        cached_by_heading: dict[str, SectionEvaluation] = {}
+        if previous_evaluation is not None:
+            for item in previous_evaluation.section_evaluations:
+                cached_by_heading[item.section_heading.lower()] = item
+
         section_evaluations: list[SectionEvaluation] = []
         failed_sections: list[str] = []
 
         for sec in report.sections:
-            limits = config.word_limits.sections.get(sec.heading.lower().replace(" ", "_"))
+            sec_key_lower = sec.heading.lower()
+            if (
+                changed_sections is not None
+                and sec_key_lower not in changed_sections
+                and sec_key_lower in cached_by_heading
+            ):
+                cached_eval = cached_by_heading[sec_key_lower]
+                section_evaluations.append(cached_eval)
+                if not cached_eval.passed:
+                    failed_sections.append(sec.heading)
+                continue
+
+            limits = config.word_limits.sections.get(sec_key_lower.replace(" ", "_"))
             min_w = limits.min if limits else 100
             max_w = limits.max if limits else 600
 
@@ -254,6 +276,7 @@ class Evaluator:
                 max_words=max_w,
                 word_count=sec.word_count,
                 assignment_context=assignment_context,
+                available_references=available_references,
             )
 
             try:

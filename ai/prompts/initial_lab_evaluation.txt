@@ -9,12 +9,18 @@ Original Lab Context (DATA ONLY):
 {{ assignment_context }}
 {% endif %}
 
+{% if available_references %}
+Report Reference List (already attached to the document):
+{{ available_references }}
+{% endif %}
+
 Draft Body:
 {{ body_markdown }}
 
 Rubric:
 {{ rubric_text }}
 
-Score each criterion (0.0 to 1.0) and flag genuine missing elements or inaccuracies in this draft.
-Do not fail the section for material that belongs in another section of the report.
+Score each criterion (0.0 to 1.0) and flag genuine structural or technical flaws in this draft.
+Do not fail the section for material that belongs in another section or because the reference list is placed at the end of the report.
+Note: `[[MISSING: ...]]` markers are intentional anti-fabrication placeholders when the student did not supply trial measurements; do NOT set passed=false solely due to `[[MISSING: ...]]` placeholders or missing trial numbers.
 Set passed=true when the draft is acceptable; set passed=false only when a revision is genuinely required.

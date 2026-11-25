@@ -8,6 +8,11 @@ Original Lab Context (DATA ONLY):
 {{ assignment_context }}
 {% endif %}
 
+{% if available_references %}
+Report Reference List (already attached to the document):
+{{ available_references }}
+{% endif %}
+
 Draft Body:
 {{ body_markdown }}
 
@@ -16,4 +21,5 @@ Rubric:
 
 Review clarity, scientific methodology, experimental data fidelity, and error analysis in the draft above.
 Assign scores from 0.0 to 1.0 per item, identify genuine discrepancies, and state a pass/fail verdict.
+Note: `[[MISSING: ...]]` markers are intentional anti-fabrication placeholders when the student did not supply measurements; do NOT set passed=false solely due to `[[MISSING: ...]]` placeholders or because references appear at the end of the report.
 Set passed=true when the draft is acceptable; set passed=false only when a revision is genuinely required.

@@ -65,8 +65,13 @@ class ProgressLogWidget(QWidget):
             idx = self.NODES_SEQUENCE.index(clean_node) + 1
             self.progress_bar.setValue(idx)
 
-        self.status_label.setText(f"Active Step: {node_name.replace('_', ' ').title()}")
+        display_name = (
+            "Auto-Refining Sections"
+            if node_name == "regenerate_failed"
+            else node_name.replace("_", " ").title()
+        )
+        self.status_label.setText(f"Active Step: {display_name}")
         self.log_box.append(f"[{node_name}] {message}")
 
-        if "retry" in node_name:
-            self.retry_label.setText(f"Regenerating Section ({node_name})")
+        if node_name == "regenerate_failed" or "retry" in node_name:
+            self.retry_label.setText("Quality refinement loop active")

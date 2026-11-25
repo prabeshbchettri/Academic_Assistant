@@ -230,13 +230,25 @@ def evaluate_output_node(state: WorkflowState, llm: LLMProvider) -> dict[str, An
     norm = NormalizedInput.model_validate(state["normalized_input"])
     report = ReportContent.model_validate(state["report"])
 
+    prev_eval_dict = state.get("evaluation")
+    prev_eval = EvaluationResult.model_validate(prev_eval_dict) if prev_eval_dict else None
+    regen_list = state.get("last_regenerated_sections")
+    changed = {s.lower() for s in regen_list} if regen_list else None
+
     evaluator = Evaluator(llm)
-    eval_result = evaluator.evaluate_semantic(cfg, report, normalized=norm)
+    eval_result = evaluator.evaluate_semantic(
+        cfg,
+        report,
+        normalized=norm,
+        previous_evaluation=prev_eval,
+        changed_sections=changed,
+    )
 
     history = state.get("node_history", []) + ["evaluate_output"]
     return {
         "evaluation": eval_result.model_dump(mode="json"),
         "failed_sections": eval_result.failed_sections,
+        "last_regenerated_sections": [],
         "llm_telemetry": _collect_telemetry(llm),
         "node_history": history,
     }
@@ -291,12 +303,14 @@ def regenerate_failed_node(state: WorkflowState, llm: LLMProvider) -> dict[str, 
 
     generator = SectionGenerator(llm)
     new_sections: list[SectionDraft] = []
+    regenerated_headings: list[str] = []
     failed_lower = {item.lower().replace("_", " ") for item in failed}
 
     for sec in report.sections:
         sec_norm = sec.heading.lower().replace("_", " ")
         if sec.heading in failed or sec_norm in failed_lower:
             logger.info("Regenerating section '%s' (Attempt %d)", sec.heading, retry_count)
+            regenerated_headings.append(sec.heading)
             section_critique = (
                 format_section_feedback(eval_obj, sec.heading) if eval_obj else ""
             )
@@ -330,6 +344,7 @@ def regenerate_failed_node(state: WorkflowState, llm: LLMProvider) -> dict[str, 
     return {
         "report": report.model_dump(mode="json"),
         "retry_count": retry_count,
+        "last_regenerated_sections": regenerated_headings,
         "llm_telemetry": _collect_telemetry(llm),
         "node_history": history,
     }
