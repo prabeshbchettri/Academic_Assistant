@@ -20,6 +20,7 @@ def run_cli_generation(
     from langgraph.types import Command
 
     from ai.llm.factory import build_provider
+    from app.preferences import load_preferences
     from database.db import get_session, init_db
     from database.repositories import AssignmentRepository
     from models.assignment import RawInput, SourceType
@@ -27,6 +28,7 @@ def run_cli_generation(
     from workflow.state import WorkflowState
 
     init_db()
+    prefs = load_preferences()
     provider = build_provider(use_mock=mock)
     graph = build_academic_workflow(llm=provider)
 
@@ -45,17 +47,24 @@ def run_cli_generation(
     thread_id = f"cli_{assign_id}"
     config = {"configurable": {"thread_id": thread_id}}
 
+    raw = RawInput(
+        source_type=SourceType.MANUAL,
+        title=title,
+        raw_text=text,
+        course_name="Computer Networks / Systems Programming",
+        metadata={
+            "student_profile": prefs.student.model_dump(mode="json"),
+            "document_preferences": prefs.document.model_dump(mode="json"),
+            "submitted_to": prefs.document.department,
+        },
+    )
     state: WorkflowState = {
         "assignment_id": assign_id,
         "thread_id": thread_id,
-        "raw_input": RawInput(
-            source_type=SourceType.MANUAL,
-            title=title,
-            raw_text=text,
-        ).model_dump(mode="json"),
+        "raw_input": raw.model_dump(mode="json"),
         "category": category,
         "retry_count": 0,
-        "max_retries": 3,
+        "max_retries": 2,
         "status": "started",
         "node_history": [],
     }
@@ -65,14 +74,22 @@ def run_cli_generation(
         for node in chunk:
             print(f"  -> Finished step: {node}", flush=True)
 
-    # Check for human review interrupt and auto-approve in CLI mode
-    snapshot = graph.get_state(config)
-    if snapshot.tasks and snapshot.tasks[0].interrupts:
-        print(
-            "  -> Human review interrupt reached. Auto-approving for CLI export...",
-            flush=True,
-        )
-        resume_cmd: Command = Command(resume={"decision": "approve"})
+    # Handle any workflow interrupts (missing_info, human_review) in CLI mode
+    while True:
+        snapshot = graph.get_state(config)
+        if not (snapshot.tasks and snapshot.tasks[0].interrupts):
+            break
+        payload = snapshot.tasks[0].interrupts[0].value
+        int_type = payload.get("type") if isinstance(payload, dict) else "unknown"
+        if int_type == "missing_info":
+            print("  -> Missing-info interrupt: continuing with placeholders...", flush=True)
+            resume_cmd: Command = Command(resume={"provided_data": ""})
+        else:
+            print(
+                "  -> Human review interrupt reached. Auto-approving for CLI export...",
+                flush=True,
+            )
+            resume_cmd = Command(resume={"decision": "approve"})
         for chunk in graph.stream(resume_cmd, config, stream_mode="updates"):
             for node in chunk:
                 print(f"  -> Finished step: {node}", flush=True)

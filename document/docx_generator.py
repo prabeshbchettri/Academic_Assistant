@@ -137,8 +137,14 @@ class DocxGenerator:
             heading.paragraph_format.space_before = Pt(14)
             heading.paragraph_format.space_after = Pt(6)
 
+            cleaned_body = re.sub(
+                r"^#{1,4}\s+" + re.escape(sec.heading) + r"\s*\n+",
+                "",
+                sec.body_markdown.strip(),
+                flags=re.IGNORECASE,
+            )
             add_markdown_paragraph(
-                doc, sec.body_markdown, font_name=effective_cfg.formatting.font
+                doc, cleaned_body, font_name=effective_cfg.formatting.font
             )
 
             for table_data in sec.tables:
@@ -459,7 +465,10 @@ class DocxGenerator:
         caption_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         caption_p.paragraph_format.space_before = Pt(8)
         caption_p.paragraph_format.space_after = Pt(4)
-        caption_run = caption_p.add_run(f"Table {table_number}: {table_data.caption}")
+        clean_caption = re.sub(
+            r"^Table\s+\d+\s*[:.\-]\s*", "", table_data.caption.strip(), flags=re.IGNORECASE
+        )
+        caption_run = caption_p.add_run(f"Table {table_number}: {clean_caption}")
         self._style_run(caption_run, config, size=9.5, italic=True, color=MUTED)
 
         col_count = len(table_data.headers)

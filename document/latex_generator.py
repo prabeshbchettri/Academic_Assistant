@@ -85,14 +85,25 @@ def _render_table(header_line: str, row_lines: list[str]) -> list[str]:
     out = [
         r"\begin{table}[H]",
         r"\centering",
-        r"\small",
-        r"\begin{tabularx}{\textwidth}{" + " ".join(["X"] * column_count) + "}",
+        r"\footnotesize" if column_count >= 4 else r"\small",
+        r"\begin{tabularx}{\textwidth}{"
+        + " ".join([r">{\raggedright\arraybackslash}X"] * column_count)
+        + "}",
         r"\toprule",
-        " & ".join(r"\textbf{" + _inline(cell) + "}" for cell in normalized(header)) + r" \\",
+        " & ".join(
+            r"\textbf{" + _inline(cell).replace("/", r"/\allowbreak ") + "}"
+            for cell in normalized(header)
+        )
+        + r" \\",
         r"\midrule",
     ]
     for row in rows:
-        out.append(" & ".join(_inline(cell) for cell in normalized(row)) + r" \\")
+        out.append(
+            " & ".join(
+                _inline(cell).replace("/", r"/\allowbreak ") for cell in normalized(row)
+            )
+            + r" \\"
+        )
     out.extend([r"\bottomrule", r"\end{tabularx}", r"\end{table}", ""])
     return out
 
@@ -338,19 +349,29 @@ class LatexGenerator:
 
         rendered_sections = []
         for sec in report.sections:
+            # Strip duplicate leading markdown heading matching the section heading
+            cleaned_body = re.sub(
+                r"^#{1,4}\s+" + re.escape(sec.heading) + r"\s*\n+",
+                "",
+                sec.body_markdown.strip(),
+                flags=re.IGNORECASE,
+            )
             rendered_tables = []
             for table in sec.tables:
                 col_count = max(1, len(table.headers))
+                clean_caption = re.sub(
+                    r"^Table\s+\d+\s*[:.\-]\s*", "", table.caption.strip(), flags=re.IGNORECASE
+                )
                 padded_rows = [
                     [
-                        escape_latex(cell)
+                        escape_latex(cell).replace("/", r"/\allowbreak ")
                         for cell in (list(row) + [""] * col_count)[:col_count]
                     ]
                     for row in table.rows
                 ]
                 rendered_tables.append(
                     {
-                        "caption": escape_latex(table.caption),
+                        "caption": escape_latex(clean_caption),
                         "headers": [escape_latex(header) for header in table.headers],
                         "rows": padded_rows,
                     }
@@ -359,7 +380,7 @@ class LatexGenerator:
             rendered_sections.append(
                 {
                     "heading": escape_latex(sec.heading),
-                    "body_latex": markdown_to_latex(sec.body_markdown),
+                    "body_latex": markdown_to_latex(cleaned_body),
                     "tables": rendered_tables,
                 }
             )
@@ -408,9 +429,15 @@ class LatexGenerator:
                 "logo_path": effective_logo.replace("\\", "/"),
             }
 
+        def _truncate(s: str, limit: int = 38) -> str:
+            s = s.strip()
+            return s if len(s) <= limit else s[: limit - 3].rstrip() + "..."
+
         return template.render(
             title=escape_latex(report.title),
+            header_title=escape_latex(_truncate(report.title, 38)),
             course=escape_latex(report.course),
+            header_course=escape_latex(_truncate(report.course, 28)),
             author=escape_latex(report.author or "Academic Assistant"),
             date=escape_latex(report.date or "2026"),
             abstract=escape_latex(report.abstract),

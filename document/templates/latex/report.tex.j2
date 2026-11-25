@@ -33,6 +33,7 @@
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs}
 \usepackage{tabularx}
+\usepackage{array}
 \usepackage{longtable}
 \usepackage{graphicx}
 \usepackage{caption}
@@ -89,11 +90,11 @@
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
-%% if course
-\fancyhead[L]{\small\itshape\color{textgray} \VAR{course}}
-\fancyhead[R]{\small\color{textgray} \VAR{title}}
+%% if header_course
+\fancyhead[L]{\small\itshape\color{textgray} \VAR{header_course}}
+\fancyhead[R]{\small\color{textgray} \VAR{header_title}}
 %% else
-\fancyhead[L]{\small\itshape\color{textgray} \VAR{title}}
+\fancyhead[L]{\small\itshape\color{textgray} \VAR{header_title}}
 %% endif
 \fancyfoot[C]{\small\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
@@ -216,9 +217,9 @@
 \BLOCK{ for table in section.tables }
 \begin{table}[H]
 \centering
-\small
+\BLOCK{ if table.headers | length >= 4 }\footnotesize\BLOCK{ else }\small\BLOCK{ endif }
 \caption{\VAR{table.caption}}
-\begin{tabularx}{\textwidth}{ \BLOCK{ for _ in table.headers }X\BLOCK{ endfor } }
+\begin{tabularx}{\textwidth}{ \BLOCK{ for _ in table.headers }>{\raggedright\arraybackslash}X\BLOCK{ endfor } }
 \toprule
 \BLOCK{ for h in table.headers }\textbf{\VAR{h}}\BLOCK{ if not loop.last } & \BLOCK{ endif }\BLOCK{ endfor } \\
 \midrule

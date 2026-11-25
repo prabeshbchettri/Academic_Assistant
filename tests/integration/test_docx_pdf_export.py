@@ -44,3 +44,8 @@ def test_docx_and_pdf_export_pipeline():
     pdf_path = pdf_exporter.export(report, docx_path, assignment_id=999, version=1)
     if pdf_path:
         assert pdf_path.exists()
+        assert pdf_path.stat().st_size > 1000
+        import pymupdf
+
+        with pymupdf.open(str(pdf_path)) as doc:
+            assert len(doc) >= 1

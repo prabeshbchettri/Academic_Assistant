@@ -124,14 +124,23 @@ class PdfExporter:
             tex_file = Path(tmpdir) / "document.tex"
             tex_file.write_text(tex_source, encoding="utf-8")
 
-            cmd = [tectonic_bin, "--untrusted", "-o", tmpdir, str(tex_file)]
+            cmd = [tectonic_bin, "--untrusted", "-o", ".", "document.tex"]
             try:
-                result = subprocess.run(cmd, capture_output=True, timeout=60)
+                result = subprocess.run(cmd, cwd=tmpdir, capture_output=True, timeout=60)
                 produced_pdf = Path(tmpdir) / "document.pdf"
-                if result.returncode == 0 and produced_pdf.exists():
+                if (
+                    result.returncode == 0
+                    and produced_pdf.exists()
+                    and produced_pdf.stat().st_size > 200
+                ):
                     shutil.copy2(produced_pdf, target_pdf)
                     logger.info("Compiled PDF using Tectonic at %s", target_pdf)
                     return target_pdf
+                logger.warning(
+                    "Tectonic did not produce valid PDF (rc=%s): %s",
+                    result.returncode,
+                    result.stderr.decode("utf-8", errors="replace")[:400],
+                )
             except Exception as exc:
                 logger.warning("Tectonic compilation failed: %s", exc)
 
@@ -156,19 +165,28 @@ class PdfExporter:
             cmd = [
                 xelatex_bin,
                 "-interaction=nonstopmode",
-                "-output-directory",
-                tmpdir,
-                str(tex_file),
+                "document.tex",
             ]
             try:
-                # Run twice so TOC and page numbers settle
-                subprocess.run(cmd, capture_output=True, timeout=40)
-                subprocess.run(cmd, capture_output=True, timeout=40)
+                # Run twice in tmpdir so TOC, page numbers, and relative logo resolve cleanly
+                subprocess.run(cmd, cwd=tmpdir, capture_output=True, timeout=40)
+                result = subprocess.run(cmd, cwd=tmpdir, capture_output=True, timeout=40)
                 produced_pdf = Path(tmpdir) / "document.pdf"
-                if produced_pdf.exists():
+                if (
+                    result.returncode == 0
+                    and produced_pdf.exists()
+                    and produced_pdf.stat().st_size > 200
+                ):
                     shutil.copy2(produced_pdf, target_pdf)
                     logger.info("Compiled PDF using %s at %s", xelatex_bin, target_pdf)
                     return target_pdf
+                logger.warning(
+                    "%s failed to produce valid PDF (rc=%s, size=%s): %s",
+                    xelatex_bin,
+                    result.returncode,
+                    produced_pdf.stat().st_size if produced_pdf.exists() else 0,
+                    result.stdout.decode("utf-8", errors="replace")[-400:],
+                )
             except Exception as exc:
                 logger.warning("%s compilation failed: %s", xelatex_bin, exc)
 
