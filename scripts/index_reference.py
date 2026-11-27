@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from ai.llm.mock import MockProvider
+from ai.llm.factory import build_llm_provider
 from ai.retriever import RagRetriever
 from database.db import get_session, init_db
 from database.models import ReferenceDocumentTable
@@ -27,7 +27,7 @@ def main() -> int:
     print(f"Extracted {len(parsed.text)} characters.")
 
     print(f"Indexing into course collection '{args.course}'...")
-    retriever = RagRetriever(llm=MockProvider())
+    retriever = RagRetriever(llm=build_llm_provider())
     chunk_count = retriever.index_document(args.course, file_path.name, parsed.text)
 
     # Persist in DB

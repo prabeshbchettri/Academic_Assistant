@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -14,7 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.settings import settings
+from app.settings import PROJECT_ROOT, settings
 from integrations.google_auth import is_authenticated
 
 
@@ -34,28 +32,30 @@ class SettingsPage(QWidget):
         c_layout = QVBoxLayout(card)
         c_layout.setSpacing(14)
 
-        # Gemini API Key
-        c_layout.addWidget(QLabel("Google Gemini API Key:"))
+        # NVIDIA NIM API Key
+        c_layout.addWidget(QLabel("NVIDIA NIM API Key:"))
         self.api_key_input = QLineEdit()
         self.api_key_input.setEchoMode(QLineEdit.Password)
         key_val = (
-            settings.gemini_api_key.get_secret_value()
-            if hasattr(settings.gemini_api_key, "get_secret_value")
-            else str(settings.gemini_api_key or "")
+            settings.nvidia_api_key.get_secret_value()
+            if hasattr(settings.nvidia_api_key, "get_secret_value")
+            else str(settings.nvidia_api_key or "")
         )
         self.api_key_input.setText(key_val)
         c_layout.addWidget(self.api_key_input)
 
-        # Gemini Model
-        c_layout.addWidget(QLabel("Primary Gemini Model:"))
+        # NVIDIA Model
+        c_layout.addWidget(QLabel("Primary NVIDIA Model:"))
         self.model_combo = QComboBox()
-        self.model_combo.addItems([
-            "gemini-3.6-flash",
-            "gemini-3.5-flash",
-            "gemini-3.1-pro-preview",
-            "gemini-2.5-flash",
-        ])
-        self.model_combo.setCurrentText(settings.gemini_model)
+        models = [
+            "nvidia/nemotron-3.5-lightning-30b-a3b",
+            "nvidia/nemotron-3.5-bolt-e4b",
+            "mistralai/mistral-large-4-1t-a52b",
+        ]
+        if settings.nvidia_model not in models:
+            models.insert(0, settings.nvidia_model)
+        self.model_combo.addItems(models)
+        self.model_combo.setCurrentText(settings.nvidia_model)
         c_layout.addWidget(self.model_combo)
 
         # PDF Engine
@@ -119,22 +119,32 @@ class SettingsPage(QWidget):
 
         # Update runtime settings
         from pydantic import SecretStr
-        settings.gemini_api_key = SecretStr(new_key)
-        settings.gemini_model = new_model
+        settings.nvidia_api_key = SecretStr(new_key)
+        settings.nvidia_model = new_model
         settings.pdf_engine = new_pdf
 
-        # Write to .env
-        env_file = Path(__file__).resolve().parent.parent.parent / ".env"
-        lines = []
-        if env_file.exists():
-            for line in env_file.read_text(encoding="utf-8").splitlines():
-                if line.startswith("GEMINI_API_KEY="):
-                    lines.append(f"GEMINI_API_KEY={new_key}")
-                elif line.startswith("GEMINI_MODEL="):
-                    lines.append(f"GEMINI_MODEL={new_model}")
-                elif line.startswith("PDF_ENGINE="):
-                    lines.append(f"PDF_ENGINE={new_pdf}")
-                else:
-                    lines.append(line)
+        # Write to the project-root .env that app.settings loads.
+        env_file = PROJECT_ROOT / ".env"
+        lines = (
+            env_file.read_text(encoding="utf-8").splitlines()
+            if env_file.exists()
+            else []
+        )
+        for key, value in (
+            ("NVIDIA_API_KEY", new_key),
+            ("NVIDIA_MODEL", new_model),
+            ("PDF_ENGINE", new_pdf),
+        ):
+            lines = self._upsert_env_line(lines, key, value)
         env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
         QMessageBox.information(self, "Settings", "Settings saved successfully.")
+
+    @staticmethod
+    def _upsert_env_line(lines: list[str], key: str, value: str) -> list[str]:
+        prefix = f"{key}="
+        for index, line in enumerate(lines):
+            if line.startswith(prefix):
+                lines[index] = f"{key}={value}"
+                return lines
+        lines.append(f"{key}={value}")
+        return lines

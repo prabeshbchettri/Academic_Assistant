@@ -24,10 +24,10 @@
     "semantic_hash": "7dce6ab787d931f8b6035b4e28fecd1e"
   },
   "ai/generator.py": {
-    "mtime": 1795430937.784587,
-    "seen": 1795431551.2955468,
-    "ast_hash": "0bdc659c0df25095a9407db669fb5960",
-    "semantic_hash": "0bdc659c0df25095a9407db669fb5960"
+    "mtime": 1795587407.73653,
+    "seen": 1795688570.4861538,
+    "ast_hash": "c218ca30a3b6b0a6a36c4acff0437457",
+    "semantic_hash": ""
   },
   "ai/llm/__init__.py": {
     "mtime": 1795430937.7858498,
@@ -84,10 +84,10 @@
     "semantic_hash": "3967e080a8feb8f4245f60ed480eee26"
   },
   "app/preferences.py": {
-    "mtime": 1795430937.8139188,
-    "seen": 1795431551.295577,
-    "ast_hash": "43eeedda00063fd3001d703c4336ef83",
-    "semantic_hash": "43eeedda00063fd3001d703c4336ef83"
+    "mtime": 1795587407.7385328,
+    "seen": 1795688570.4861934,
+    "ast_hash": "f78a10d9128ad8836f455519712c85c9",
+    "semantic_hash": ""
   },
   "app/settings.py": {
     "mtime": 1795430937.8159218,
@@ -174,22 +174,22 @@
     "semantic_hash": "2385e0721c59b0ba1e883e7a243d9b09"
   },
   "configs/assignment.yaml": {
-    "mtime": 1795430937.8472931,
-    "seen": 1795431551.2956192,
-    "ast_hash": "37dbb8eee6d986dc32b7f9fa7752a674",
-    "semantic_hash": "37dbb8eee6d986dc32b7f9fa7752a674"
+    "mtime": 1795587407.7415247,
+    "seen": 1795688570.4862492,
+    "ast_hash": "41ec278c0bf7182cd9310951f04d0c7e",
+    "semantic_hash": ""
   },
   "configs/final_lab.yaml": {
-    "mtime": 1795430937.8487098,
-    "seen": 1795431551.2956219,
-    "ast_hash": "2451c88108e77d73458e6dc48e44f9f0",
-    "semantic_hash": "2451c88108e77d73458e6dc48e44f9f0"
+    "mtime": 1795587407.7445257,
+    "seen": 1795688570.4862525,
+    "ast_hash": "776a4014ff77e54ca669e7231669a752",
+    "semantic_hash": ""
   },
   "configs/initial_lab.yaml": {
-    "mtime": 1795430937.8513074,
-    "seen": 1795431551.2956247,
-    "ast_hash": "db5d002ae8428507153f6a1722eec6df",
-    "semantic_hash": "db5d002ae8428507153f6a1722eec6df"
+    "mtime": 1795587407.7465277,
+    "seen": 1795688570.4862561,
+    "ast_hash": "10f43b8bd8a03ca29895ebc9974e8b4d",
+    "semantic_hash": ""
   },
   "configs/schema.py": {
     "mtime": 1795430937.8526168,
@@ -234,10 +234,10 @@
     "semantic_hash": "ffcd8c1dfda0e3b9b7b260c0b79ed05c"
   },
   "document/docx_generator.py": {
-    "mtime": 1795430937.8680956,
-    "seen": 1795431551.2956462,
-    "ast_hash": "20dc37bdcb986e31a03865051086d776",
-    "semantic_hash": "20dc37bdcb986e31a03865051086d776"
+    "mtime": 1795587407.7535336,
+    "seen": 1795688570.486283,
+    "ast_hash": "44b241de0947c765a5f5de84613a1d07",
+    "semantic_hash": ""
   },
   "document/latex_escape.py": {
     "mtime": 1795430937.8700986,
@@ -246,10 +246,10 @@
     "semantic_hash": "e7546b1e37d9842ce7cb5595eda4b586"
   },
   "document/latex_generator.py": {
-    "mtime": 1795430937.8716033,
-    "seen": 1795431551.295652,
-    "ast_hash": "7e112b0bc98646d5551ef0578bd2c42f",
-    "semantic_hash": "7e112b0bc98646d5551ef0578bd2c42f"
+    "mtime": 1795587407.7555277,
+    "seen": 1795688570.48629,
+    "ast_hash": "9fe4b2e259d49b05df7f76684cb3c3e2",
+    "semantic_hash": ""
   },
   "document/markdown_to_docx.py": {
     "mtime": 1795430937.8739665,
@@ -354,10 +354,10 @@
     "semantic_hash": "d32c146c574d2571cf01a02033cae4db"
   },
   "models/report.py": {
-    "mtime": 1795430937.9073741,
-    "seen": 1795431551.295701,
-    "ast_hash": "3c043c489ef20165b3bbf6c9b817a665",
-    "semantic_hash": "3c043c489ef20165b3bbf6c9b817a665"
+    "mtime": 1795587407.7615287,
+    "seen": 1795688570.4863517,
+    "ast_hash": "2f37ab618ea005ddbc957ef41d28f06e",
+    "semantic_hash": ""
   },
   "models/workflow.py": {
     "mtime": 1795430937.9098701,
@@ -612,15 +612,27 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "document/templates/latex/report.tex.j2": {
-    "mtime": 1795430937.878171,
-    "seen": 1795431551.295822,
-    "ast_hash": "43eaade2b603bda08964cfc42f9bbf5f",
-    "semantic_hash": "43eaade2b603bda08964cfc42f9bbf5f"
+    "mtime": 1795587407.7585258,
+    "seen": 1795688570.4865096,
+    "ast_hash": "a031871ae73e7317f226b73fd206a172",
+    "semantic_hash": ""
   },
   "plan.md": {
     "mtime": 1795430937.9124136,
     "seen": 1795431551.2958245,
     "ast_hash": "209401c4ebdbcfca51fc13bdd57a1946",
     "semantic_hash": "209401c4ebdbcfca51fc13bdd57a1946"
+  },
+  "TECH_STACK.md": {
+    "mtime": 1795432011.960781,
+    "seen": 1795688570.4864657,
+    "ast_hash": "eb3f477e7e4f42eccd6e8167f38299a1",
+    "semantic_hash": ""
+  },
+  "document/assets/tu_logo.png": {
+    "mtime": 1795587407.7505267,
+    "seen": 1795688570.4865167,
+    "ast_hash": "289189527504dfbb62ef1e442e03dd8a",
+    "semantic_hash": ""
   }
 }

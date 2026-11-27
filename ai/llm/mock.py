@@ -107,7 +107,7 @@ class MockProvider(LLMProvider):
     ) -> str:
         return f"Mock response for prompt: {user_prompt[:50]}..."
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str], input_type: str = "passage") -> list[list[float]]:
         # Deterministic pseudo-embedding of 768 dimensions based on SHA256
         embeddings = []
         for text in texts:

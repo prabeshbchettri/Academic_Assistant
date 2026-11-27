@@ -70,7 +70,7 @@ class RagRetriever:
                 return []
 
             if self.llm:
-                query_vec = self.llm.embed([query])[0]
+                query_vec = self.llm.embed([query], input_type="query")[0]
                 results = collection.query(query_embeddings=[query_vec], n_results=min(top_k, collection.count()))
             else:
                 results = collection.query(query_texts=[query], n_results=min(top_k, collection.count()))

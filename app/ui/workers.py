@@ -8,9 +8,7 @@ from langgraph.types import Command
 from PySide6.QtCore import QObject, QThread, Signal
 
 from ai.llm.base import LLMProvider
-from ai.llm.gemini import GeminiProvider
-from ai.llm.mock import MockProvider
-from app.settings import settings
+from ai.llm.factory import build_llm_provider
 from database.db import get_session
 from database.repositories import AssignmentRepository
 from integrations.classroom.client import build_classroom_service, list_courses
@@ -63,10 +61,7 @@ class WorkflowWorker(QThread):
     def run(self) -> None:
         try:
             # Select LLM provider
-            if self.use_mock_llm or not settings.gemini_api_key_str:
-                provider: LLMProvider = MockProvider()
-            else:
-                provider = GeminiProvider(api_key=settings.gemini_api_key_str)
+            provider: LLMProvider = build_llm_provider(use_mock=self.use_mock_llm)
 
             app_graph = build_academic_workflow(llm=provider)
             config = {"configurable": {"thread_id": self.thread_id}}

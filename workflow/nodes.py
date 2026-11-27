@@ -24,6 +24,7 @@ from models.assignment import (
     Category,
     NormalizedInput,
     RawInput,
+    SourceType,
 )
 from models.evaluation import DecisionType, HumanDecision
 from models.report import ReportContent

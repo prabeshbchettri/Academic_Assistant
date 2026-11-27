@@ -17,12 +17,15 @@ class Settings(BaseSettings):
     app_name: str = "Academic AI"
     log_level: str = "INFO"
 
-    gemini_api_key: SecretStr = SecretStr("")
-    gemini_model: str = "gemini-2.5-flash-lite"
-    gemini_fallback_model: str = "gemini-2.5-flash"
-    gemini_pro_model: str = "gemini-2.5-pro"
-    gemini_embedding_model: str = "gemini-embedding-001"
-    gemini_max_output_tokens: int = 8192
+    nvidia_api_key: SecretStr = SecretStr("")
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    nvidia_model: str = "nvidia/nemotron-3.5-lightning-30b-a3b"
+    nvidia_fallback_model: str = "nvidia/nemotron-3.5-bolt-e4b"
+    nvidia_max_output_tokens: int = 8192
+    nvidia_timeout_seconds: int = 60
+    nvidia_enable_thinking: bool = False
+    nvidia_embedding_model: str = "nvidia/nemotron-3.5-embed-1b"
+    nvidia_embedding_dimensions: int = 1024
 
     google_oauth_client_file: Path = Path("credentials.json")
     google_token_store: str = "keyring"
@@ -42,17 +45,17 @@ class Settings(BaseSettings):
         path = self.google_oauth_client_file
         return path if path.is_absolute() else PROJECT_ROOT / path
 
-    def require_gemini_key(self) -> str:
-        value = self.gemini_api_key_str
+    def require_nvidia_key(self) -> str:
+        value = self.nvidia_api_key_str
         if not value:
-            raise RuntimeError("GEMINI_API_KEY is not set. Add it to .env.")
+            raise RuntimeError("NVIDIA_API_KEY is not set. Add it to .env.")
         return value
 
     @property
-    def gemini_api_key_str(self) -> str:
-        if hasattr(self.gemini_api_key, "get_secret_value"):
-            return self.gemini_api_key.get_secret_value().strip()
-        return str(self.gemini_api_key or "").strip()
+    def nvidia_api_key_str(self) -> str:
+        if hasattr(self.nvidia_api_key, "get_secret_value"):
+            return self.nvidia_api_key.get_secret_value().strip()
+        return str(self.nvidia_api_key or "").strip()
 
 
 settings = Settings()

@@ -28,6 +28,6 @@ class LLMProvider(Protocol):
         """Generates plain text response."""
         ...
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str], input_type: str = "passage") -> list[list[float]]:
         """Generates embedding vectors for a list of text strings."""
         ...

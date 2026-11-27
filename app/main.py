@@ -14,8 +14,7 @@ logger = logging.getLogger(__name__)
 def run_cli_generation(title: str, text: str, category: str = "assignment", mock: bool = False) -> None:
     from langgraph.types import Command
 
-    from ai.llm.gemini import GeminiProvider
-    from ai.llm.mock import MockProvider
+    from ai.llm.factory import build_llm_provider
     from database.db import get_session, init_db
     from database.repositories import AssignmentRepository
     from models.assignment import RawInput, SourceType
@@ -23,7 +22,7 @@ def run_cli_generation(title: str, text: str, category: str = "assignment", mock
     from workflow.state import WorkflowState
 
     init_db()
-    provider = MockProvider() if mock or not settings.gemini_api_key_str else GeminiProvider(api_key=settings.gemini_api_key_str)
+    provider = build_llm_provider(use_mock=mock)
     graph = build_academic_workflow(llm=provider)
 
     with get_session() as session:
