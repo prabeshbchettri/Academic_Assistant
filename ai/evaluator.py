@@ -11,12 +11,14 @@ from configs.schema import CategoryConfig
 from models.evaluation import (
     DeterministicFinding,
     EvaluationResult,
+    EvaluationStatus,
     SectionEvaluation,
-    SectionScore,
 )
 from models.report import ReportContent
 
 logger = logging.getLogger(__name__)
+
+CITATION_PATTERN = re.compile(r"\[(\d+)\]")
 
 BANNED_PHRASES = [
     r"as an ai language model",
@@ -94,21 +96,46 @@ class Evaluator:
                     )
                     all_passed = False
 
-        # Check citation integrity
-        ref_keys = {r.key.strip() for r in report.references}
+        # Check citation integrity: every citation must map to a supplied reference,
+        # whether it appears in the structured citation list or in the body text.
+        ref_keys = {r.key.strip() for r in report.references if r.key.strip()}
         for sec in report.sections:
-            for cit in sec.citations:
-                if cit.strip() not in ref_keys and not any(r in cit for r in ref_keys):
+            cited = {c.strip() for c in sec.citations if c.strip()}
+            cited.update(f"[{number}]" for number in CITATION_PATTERN.findall(sec.body_markdown))
+            for cit in sorted(cited):
+                if cit not in ref_keys and not any(r in cit for r in ref_keys):
                     findings.append(
                         DeterministicFinding(
                             check_name="citation_validity",
                             passed=False,
-                            message=f"Section '{sec.heading}' cites '{cit}' which is not in references table.",
+                            message=(
+                                f"Section '{sec.heading}' cites '{cit}' which is not in the "
+                                "supplied references table."
+                            ),
                             section=sec.heading,
                         )
                     )
-                    # Non-fatal warning if citations exist, but flag it
                     all_passed = False
+
+        # Check that the category's reference requirement is actually satisfied.
+        # Missing references are reported, never manufactured.
+        if config.references.required:
+            available = len(
+                {(r.key or f"{r.title}|{r.authors}").strip().lower() for r in report.references}
+            )
+            if available < config.references.min_count:
+                findings.append(
+                    DeterministicFinding(
+                        check_name="references_min_count",
+                        passed=False,
+                        message=(
+                            f"Only {available} supplied reference(s) but this category requires "
+                            f"{config.references.min_count}; references must not be invented to "
+                            "satisfy this requirement."
+                        ),
+                    )
+                )
+                all_passed = False
 
         if all_passed:
             findings.append(
@@ -128,6 +155,21 @@ class Evaluator:
     ) -> EvaluationResult:
         det_passed, findings = self.run_deterministic_checks(config, report)
 
+        if not report.sections:
+            # An empty report is a genuine quality failure, never an automatic pass.
+            logger.warning("Report contains no sections; evaluation cannot pass.")
+            return EvaluationResult(
+                status=EvaluationStatus.FAILED,
+                overall_passed=False,
+                deterministic_passed=det_passed,
+                semantic_passed=False,
+                overall_score=0.0,
+                deterministic_findings=findings,
+                section_evaluations=[],
+                failed_sections=["(entire report)"],
+                general_feedback="Report contains no sections, so it cannot pass evaluation.",
+            )
+
         root_dir = Path(__file__).resolve().parent.parent
         eval_prompt_path = root_dir / config.prompts.evaluation
         eval_template = eval_prompt_path.read_text(encoding="utf-8") if eval_prompt_path.exists() else "Evaluate: {{ body_markdown }}"
@@ -136,6 +178,7 @@ class Evaluator:
 
         section_evaluations: list[SectionEvaluation] = []
         failed_sections: list[str] = []
+        evaluation_errors: list[str] = []
 
         for sec in report.sections:
             limits = config.word_limits.sections.get(sec.heading.lower().replace(" ", "_"))
@@ -151,31 +194,60 @@ class Evaluator:
                 max_words=max_w,
             )
 
-            # In mock or offline mode, evaluate directly
             try:
                 res = self.llm.generate_structured(EvaluationResult, "You are an evaluator.", prompt)
-                if res.section_evaluations:
-                    sec_eval = res.section_evaluations[0]
-                    sec_eval.section_heading = sec.heading
-                    section_evaluations.append(sec_eval)
-                    if not sec_eval.passed:
-                        failed_sections.append(sec.heading)
-            except Exception:
-                # Default passing evaluation
-                scores = [SectionScore(criterion_id=r.id, score=0.9, comments="Acceptable") for r in config.rubric]
-                section_evaluations.append(
-                    SectionEvaluation(section_heading=sec.heading, scores=scores, passed=True)
+            except Exception as exc:
+                # Never fabricate a pass: record the failure and report it as inconclusive.
+                logger.exception(
+                    "Provider failed while evaluating section '%s'; evaluation cannot be trusted.",
+                    sec.heading,
                 )
+                evaluation_errors.append(f"{sec.heading}: {type(exc).__name__}")
+                continue
+
+            if not res.section_evaluations:
+                logger.warning(
+                    "Evaluator returned no section evaluation for '%s'; "
+                    "treating the response as incomplete.",
+                    sec.heading,
+                )
+                evaluation_errors.append(f"{sec.heading}: evaluator returned no section evaluation")
+                continue
+
+            sec_eval = res.section_evaluations[0]
+            sec_eval.section_heading = sec.heading
+            section_evaluations.append(sec_eval)
+            if not sec_eval.passed:
+                failed_sections.append(sec.heading)
 
         # Also add any deterministic failures to failed_sections
         for f in findings:
             if not f.passed and f.section and f.section not in failed_sections:
                 failed_sections.append(f.section)
 
+        if evaluation_errors:
+            # A partially evaluated report is never a passing report.
+            logger.error("Evaluation incomplete: %s", "; ".join(evaluation_errors))
+            return EvaluationResult(
+                status=EvaluationStatus.INCONCLUSIVE,
+                overall_passed=False,
+                deterministic_passed=det_passed,
+                semantic_passed=False,
+                overall_score=0.0,
+                deterministic_findings=findings,
+                section_evaluations=section_evaluations,
+                failed_sections=failed_sections,
+                general_feedback=(
+                    "Automated evaluation could not be completed, so the report was not accepted. "
+                    f"Failed checks: {'; '.join(evaluation_errors)}"
+                ),
+            )
+
         semantic_passed = len(failed_sections) == 0
         overall_passed = det_passed and semantic_passed
 
         return EvaluationResult(
+            status=EvaluationStatus.PASSED if overall_passed else EvaluationStatus.FAILED,
             overall_passed=overall_passed,
             deterministic_passed=det_passed,
             semantic_passed=semantic_passed,

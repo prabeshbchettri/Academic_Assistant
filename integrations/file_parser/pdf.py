@@ -1,11 +1,25 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pymupdf
 
 from integrations.file_parser.base import BaseFileParser, ParsedDocument
-from integrations.file_parser.ocr import perform_ocr_if_needed
+from integrations.file_parser.ocr import OcrUnavailableError, ocr_pdf_pages
+
+logger = logging.getLogger(__name__)
+
+# Pages with less extractable text than this are treated as scanned and sent to OCR.
+MIN_TEXT_CHARS_PER_PAGE = 40
+
+
+class PdfReadError(ValueError):
+    """Raised when a PDF cannot be opened (empty, corrupt, or not a PDF)."""
+
+
+class PdfPasswordProtectedError(ValueError):
+    """Raised when a PDF is encrypted and requires a password to open."""
 
 
 class PdfParser(BaseFileParser):
@@ -13,30 +27,81 @@ class PdfParser(BaseFileParser):
         return file_path.suffix.lower() == ".pdf"
 
     def parse(self, file_path: Path) -> ParsedDocument:
-        doc = pymupdf.open(str(file_path))
-        text_parts = []
-        page_count = len(doc)
-        total_chars = 0
+        try:
+            doc = pymupdf.open(str(file_path))
+        except pymupdf.FileDataError as exc:
+            raise PdfReadError(
+                f"Could not read '{file_path.name}': the file is empty, corrupt, "
+                "or not a valid PDF."
+            ) from exc
 
-        for page in doc:
-            page_text = page.get_text()
-            text_parts.append(page_text)
-            total_chars += len(page_text.strip())
+        if doc.needs_pass:
+            doc.close()
+            raise PdfPasswordProtectedError(
+                f"'{file_path.name}' is password-protected. Remove the password "
+                "before uploading it."
+            )
 
-        extracted_text = "\n\n".join(text_parts).strip()
-        doc.close()
+        try:
+            page_texts = []
+            for page in doc:
+                try:
+                    page_texts.append(page.get_text())
+                except Exception as exc:
+                    logger.warning(
+                        "Could not extract text from page %d of %s: %s",
+                        len(page_texts) + 1,
+                        file_path.name,
+                        exc,
+                    )
+                    page_texts.append("")
+            page_count = len(doc)
+        finally:
+            doc.close()
 
-        # If very little text is extracted relative to page count, it's likely scanned
-        is_scanned = (total_chars / max(1, page_count)) < 40
+        metadata = {
+            "source_file": file_path.name,
+            "size_bytes": file_path.stat().st_size,
+        }
 
-        if is_scanned:
-            ocr_text, ocr_success = perform_ocr_if_needed(file_path)
-            if ocr_success and len(ocr_text) > len(extracted_text):
-                extracted_text = ocr_text
+        # OCR only the pages without a usable text layer, preserving extractable text.
+        sparse_pages = [
+            index
+            for index, text in enumerate(page_texts)
+            if len(text.strip()) < MIN_TEXT_CHARS_PER_PAGE
+        ]
+        is_scanned = bool(page_texts) and len(sparse_pages) == page_count
+
+        if sparse_pages:
+            merged_texts = list(page_texts)
+            try:
+                ocr_texts = ocr_pdf_pages(file_path, page_numbers=sparse_pages)
+            except OcrUnavailableError as exc:
+                logger.warning(
+                    "No OCR available for %s; scanned pages will have no text. %s",
+                    file_path.name,
+                    exc,
+                )
+                metadata["ocr_status"] = "unavailable"
+                metadata["ocr_error"] = str(exc)
+            except Exception as exc:
+                logger.warning("OCR failed for %s: %s", file_path.name, exc)
+                metadata["ocr_status"] = "failed"
+                metadata["ocr_error"] = str(exc)
+            else:
+                applied = False
+                for index, ocr_text in zip(sparse_pages, ocr_texts, strict=True):
+                    if len(ocr_text) > len(merged_texts[index].strip()):
+                        merged_texts[index] = ocr_text
+                        applied = True
+                metadata["ocr_status"] = "applied" if applied else "no_text"
+            page_texts = merged_texts
+
+        extracted_text = "\n\n".join(page_texts).strip()
 
         return ParsedDocument(
             text=extracted_text,
             page_count=page_count,
-            metadata={"source_file": file_path.name, "size_bytes": file_path.stat().st_size},
+            metadata=metadata,
             is_scanned=is_scanned,
         )

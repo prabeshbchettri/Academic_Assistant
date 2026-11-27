@@ -113,10 +113,18 @@ class DocxGenerator:
                 ref_p.paragraph_format.left_indent = Inches(0.3)
                 ref_p.paragraph_format.first_line_indent = Inches(-0.3)
                 ref_p.paragraph_format.space_after = Pt(4)
-                ref_text = (
-                    f"{reference.key} {reference.authors}, \"{reference.title}\", "
-                    f"{reference.venue}, {reference.year}."
-                )
+                parts: list[str] = []
+                if reference.authors.strip():
+                    parts.append(reference.authors)
+                if reference.title.strip():
+                    parts.append(f'"{reference.title}"')
+                if reference.venue.strip():
+                    parts.append(reference.venue)
+                if reference.year.strip():
+                    parts.append(reference.year)
+                ref_text = " ".join(filter(None, [reference.key.strip(), ", ".join(parts)]))
+                if ref_text:
+                    ref_text += "."
                 ref_run = ref_p.add_run(ref_text)
                 self._style_run(ref_run, config, size=9.5)
 

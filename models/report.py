@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,16 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+class ReferenceProvenance(str, Enum):
+    """Where a bibliography entry came from. Only supplied references are rendered."""
+
+    USER_PROVIDED = "user_provided"
+    DOCUMENT_EXTRACTED = "document_extracted"
+    RETRIEVAL = "retrieval"
+    LLM_SUGGESTION = "llm_suggestion"
+    UNVERIFIED = "unverified"
+
+
 class Citation(BaseModel):
     key: str
     authors: str
@@ -18,6 +29,10 @@ class Citation(BaseModel):
     year: str
     venue: str = ""
     url: str = ""
+    doi: str = ""
+    source: str = ""
+    # Unknown origin is the safe default: an LLM-suggested source must be marked explicitly.
+    provenance: ReferenceProvenance = ReferenceProvenance.UNVERIFIED
 
 
 class TableData(BaseModel):

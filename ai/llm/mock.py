@@ -10,6 +10,7 @@ from models.assignment import Category, ClassificationResult
 from models.evaluation import (
     DeterministicFinding,
     EvaluationResult,
+    EvaluationStatus,
     SectionEvaluation,
     SectionScore,
 )
@@ -86,6 +87,7 @@ class MockProvider(LLMProvider):
                 suggestions=[],
             )
             return EvaluationResult(
+                status=EvaluationStatus.PASSED if passed else EvaluationStatus.FAILED,
                 overall_passed=passed,
                 deterministic_passed=passed,
                 semantic_passed=passed,

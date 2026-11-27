@@ -12,3 +12,4 @@ Word Limits: Min {{ min_words }}, Max {{ max_words }}
 
 Assess clarity, factual consistency, completeness, and academic formatting.
 Provide scores for each rubric criterion from 0.0 to 1.0, list specific issues if any, and determine whether the section passes.
+Return the full evaluation schema, including `status`: use 'passed' only when every criterion passes, 'failed' when any criterion fails, and 'inconclusive' when the section cannot be assessed.

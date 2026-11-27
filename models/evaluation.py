@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class DecisionType(str, Enum):
@@ -33,7 +33,15 @@ class SectionEvaluation(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
 
 
+class EvaluationStatus(str, Enum):
+    PASSED = "passed"
+    FAILED = "failed"
+    INCONCLUSIVE = "inconclusive"
+
+
 class EvaluationResult(BaseModel):
+    # Defaults to INCONCLUSIVE so a result that omits its status can never be read as a pass.
+    status: EvaluationStatus = EvaluationStatus.INCONCLUSIVE
     overall_passed: bool
     deterministic_passed: bool
     semantic_passed: bool
@@ -42,6 +50,21 @@ class EvaluationResult(BaseModel):
     section_evaluations: list[SectionEvaluation] = Field(default_factory=list)
     failed_sections: list[str] = Field(default_factory=list)
     general_feedback: str = ""
+
+    @model_validator(mode="after")
+    def validate_pass_status(self) -> EvaluationResult:
+        if self.status == EvaluationStatus.PASSED and not self.overall_passed:
+            raise ValueError("status='passed' requires overall_passed=True")
+        if self.overall_passed and (
+            self.status != EvaluationStatus.PASSED
+            or not self.deterministic_passed
+            or not self.semantic_passed
+        ):
+            raise ValueError(
+                "overall_passed=True requires status='passed', deterministic_passed=True "
+                "and semantic_passed=True"
+            )
+        return self
 
 
 class HumanDecision(BaseModel):

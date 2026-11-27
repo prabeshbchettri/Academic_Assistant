@@ -26,8 +26,8 @@ from models.assignment import (
     RawInput,
     SourceType,
 )
-from models.evaluation import DecisionType, HumanDecision
-from models.report import ReportContent
+from models.evaluation import DecisionType, EvaluationResult, EvaluationStatus, HumanDecision
+from models.report import Citation, ReportContent
 from workflow.state import WorkflowState
 
 logger = logging.getLogger(__name__)
@@ -138,9 +138,22 @@ def generate_content_node(state: WorkflowState, llm: LLMProvider) -> dict[str, A
     cfg = CategoryConfig.model_validate(state["category_config"])
     norm = NormalizedInput.model_validate(state["normalized_input"])
     retrieved = state.get("retrieved_chunks", [])
+    user_provided_data = state.get("user_provided_data") or None
+    # Only references explicitly supplied to the workflow are available for the
+    # bibliography; no reference is derived from retrieved text.
+    references = [
+        ref if isinstance(ref, Citation) else Citation.model_validate(ref)
+        for ref in (state.get("references") or [])
+    ]
 
     generator = SectionGenerator(llm)
-    report = generator.generate_full_report(cfg, norm, retrieved_chunks=retrieved)
+    report = generator.generate_full_report(
+        cfg,
+        norm,
+        references=references,
+        retrieved_chunks=retrieved,
+        user_provided_data=user_provided_data,
+    )
 
     history = state.get("node_history", []) + ["generate_content"]
     return {
@@ -153,14 +166,38 @@ def generate_content_node(state: WorkflowState, llm: LLMProvider) -> dict[str, A
 def evaluate_output_node(state: WorkflowState, llm: LLMProvider) -> dict[str, Any]:
     cfg = CategoryConfig.model_validate(state["category_config"])
     report = ReportContent.model_validate(state["report"])
+    errors = list(state.get("errors", []))
 
     evaluator = Evaluator(llm)
-    eval_result = evaluator.evaluate_semantic(cfg, report)
+    try:
+        eval_result = evaluator.evaluate_semantic(cfg, report)
+    except Exception as exc:
+        # An unexpected evaluator failure must never look like a passing evaluation.
+        logger.exception("Evaluation raised an unexpected error; marking it inconclusive.")
+        eval_result = EvaluationResult(
+            status=EvaluationStatus.INCONCLUSIVE,
+            overall_passed=False,
+            deterministic_passed=False,
+            semantic_passed=False,
+            overall_score=0.0,
+            failed_sections=[],
+            general_feedback=(
+                f"Automated evaluation failed with {type(exc).__name__} and the report was "
+                "not accepted. Please review the report manually."
+            ),
+        )
+
+    if eval_result.status == EvaluationStatus.INCONCLUSIVE:
+        logger.warning("Evaluation inconclusive: %s", eval_result.general_feedback)
+        feedback = eval_result.general_feedback or "Automated evaluation was inconclusive."
+        if feedback not in errors:
+            errors.append(feedback)
 
     history = state.get("node_history", []) + ["evaluate_output"]
     return {
         "evaluation": eval_result.model_dump(mode="json"),
         "failed_sections": eval_result.failed_sections,
+        "errors": errors,
         "node_history": history,
     }
 

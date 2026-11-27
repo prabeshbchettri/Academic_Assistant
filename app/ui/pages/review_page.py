@@ -88,7 +88,15 @@ class ReviewPage(QWidget):
         overall_passed = eval_dict.get("overall_passed", False)
         failed_secs = eval_dict.get("failed_sections", [])
 
-        if overall_passed:
+        if eval_dict.get("status") == "inconclusive":
+            self.status_badge.setText("Status: EVALUATION INCOMPLETE — MANUAL REVIEW REQUIRED")
+            self.status_badge.setObjectName("BadgeWarning")
+            self.eval_details_label.setText(
+                eval_dict.get("general_feedback")
+                or "Automated evaluation could not be completed for this report."
+            )
+            self.regenerate_all_btn.setEnabled(True)
+        elif overall_passed:
             self.status_badge.setText("Status: ALL VERIFICATION CHECKS PASSED")
             self.status_badge.setObjectName("BadgePass")
             self.eval_details_label.setText("Deterministic word counts, structure, formulas, and rubric scores are verified.")

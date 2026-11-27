@@ -3,3 +3,4 @@ Review clarity, scientific methodology, experimental data fidelity, and error an
 Rubric:
 {{ rubric_text }}
 Assign scores from 0.0 to 1.0 per item, identify discrepancies, and state pass/fail verdict.
+Return the full evaluation schema, including `status`: use 'passed' only when every criterion passes, 'failed' when any criterion fails, and 'inconclusive' when the section cannot be assessed.
