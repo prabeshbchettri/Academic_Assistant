@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_names1_java", "label": "names1.java", "file_type": "code", "source_file": "names1.java", "source_location": "L1"}], "edges": [], "raw_calls": [], "parse_errors": {"first_error_line": 1, "multiline_error": true, "lossy_error_line": 1}}

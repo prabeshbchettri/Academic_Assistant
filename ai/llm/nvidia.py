@@ -18,6 +18,16 @@ MODEL_MAX_OUTPUT_TOKENS = {
     "nvidia/nemotron-3.5-bolt-e4b": 65536,
 }
 
+# Models whose chat template exposes the ``enable_thinking`` switch. Thinking is a
+# per-model capability, so the provider must not send ``chat_template_kwargs`` to a model
+# that does not declare support for it.
+THINKING_CAPABLE_MODELS = frozenset(
+    {
+        "nvidia/nemotron-3.5-lightning-30b-a3b",
+        "nvidia/nemotron-3.5-bolt-e4b",
+    }
+)
+
 
 class NvidiaProvider(LLMProvider):
     """
@@ -73,7 +83,7 @@ class NvidiaProvider(LLMProvider):
                     temperature=temperature,
                     max_tokens=max_tokens,
                     response_format=self._json_schema_format(schema),
-                    enable_thinking=False,
+                    enable_thinking=self._structured_thinking_setting(model_name),
                 )
                 content = self._content(response)
                 if not content.strip():
@@ -100,7 +110,7 @@ class NvidiaProvider(LLMProvider):
                     ),
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    enable_thinking=False,
+                    enable_thinking=self._structured_thinking_setting(model_name),
                 )
                 content = self._content(response)
                 if not content.strip():
@@ -127,7 +137,7 @@ class NvidiaProvider(LLMProvider):
                     ),
                     temperature=0.0,
                     max_tokens=max_tokens,
-                    enable_thinking=False,
+                    enable_thinking=self._structured_thinking_setting(model_name),
                 )
                 content = self._content(response)
                 if not content.strip():
@@ -157,7 +167,7 @@ class NvidiaProvider(LLMProvider):
 
         for model_name in self._models_to_try():
             max_tokens = self._max_tokens_for(model_name)
-            for enable_thinking in self._thinking_variants():
+            for enable_thinking in self._thinking_variants(model_name):
                 try:
                     response = self._create_chat(
                         client,
@@ -204,12 +214,26 @@ class NvidiaProvider(LLMProvider):
         return [item.embedding for item in response.data]
 
     def _create_chat(self, client, **kwargs):
-        """Create a chat completion, dropping optional NVIDIA extras if rejected."""
+        """Create a chat completion, dropping optional NVIDIA extras if rejected.
+
+        This method is the single boundary to the OpenAI-compatible SDK, so
+        ``enable_thinking`` is consumed here and never forwarded as a request keyword.
+        For models that support thinking it is sent as
+        ``extra_body={"chat_template_kwargs": {"enable_thinking": ...}}``; for all other
+        models it is omitted entirely.
+        """
+        enable_thinking = kwargs.pop("enable_thinking", None)
+
+        request = dict(kwargs)
+        extra_body = self._thinking_extra_body(request.get("model"), enable_thinking)
+        if extra_body is not None:
+            request["extra_body"] = {**request.get("extra_body", {}), **extra_body}
+
         try:
-            return client.chat.completions.create(**kwargs)
+            return client.chat.completions.create(**request)
         except Exception as exc:
-            if self._is_unsupported_param_error(exc) and "extra_body" in kwargs:
-                retry_kwargs = dict(kwargs)
+            if self._is_unsupported_param_error(exc) and "extra_body" in request:
+                retry_kwargs = dict(request)
                 retry_kwargs.pop("extra_body", None)
                 return client.chat.completions.create(**retry_kwargs)
             raise
@@ -221,7 +245,34 @@ class NvidiaProvider(LLMProvider):
                 models.append(model)
         return models
 
-    def _thinking_variants(self) -> list[bool]:
+    @staticmethod
+    def supports_thinking(model_name: str | None) -> bool:
+        """Whether the given model exposes the ``enable_thinking`` chat-template switch."""
+        return bool(model_name) and model_name in THINKING_CAPABLE_MODELS
+
+    def _structured_thinking_setting(self, model_name: str) -> bool | None:
+        """Disable thinking for JSON generations, but only where the model supports it."""
+        return False if self.supports_thinking(model_name) else None
+
+    def _thinking_extra_body(
+        self,
+        model_name: str | None,
+        enable_thinking: bool | None,
+    ) -> dict[str, Any] | None:
+        if enable_thinking is None:
+            return None
+        if not self.supports_thinking(model_name):
+            logger.debug(
+                "NVIDIA model '%s' does not support enable_thinking; omitting it.",
+                model_name,
+            )
+            return None
+        return {"chat_template_kwargs": {"enable_thinking": enable_thinking}}
+
+    def _thinking_variants(self, model_name: str) -> list[bool | None]:
+        """Thinking values to attempt for a model; ``None`` means "do not send it"."""
+        if not self.supports_thinking(model_name):
+            return [None]
         if settings.nvidia_enable_thinking:
             return [True, False]
         return [False]

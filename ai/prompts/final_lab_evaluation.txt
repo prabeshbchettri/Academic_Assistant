@@ -1,6 +1,63 @@
-Perform rigorous peer-review evaluation of the final lab section '{{ section_heading }}'.
-Review clarity, scientific methodology, experimental data fidelity, and error analysis.
-Rubric:
+Perform a rigorous technical and academic evaluation of the final laboratory report section '{{ section_heading }}'.
+
+Evaluate the section against the supplied rubric and the scientific and engineering requirements of the laboratory.
+
+**Rubric:**
 {{ rubric_text }}
-Assign scores from 0.0 to 1.0 per item, identify discrepancies, and state pass/fail verdict.
-Return the full evaluation schema, including `status`: use 'passed' only when every criterion passes, 'failed' when any criterion fails, and 'inconclusive' when the section cannot be assessed.
+
+### Evaluation Scope
+
+Assess the section according to the following dimensions:
+
+1. **Technical Accuracy:** Verify the correctness of engineering concepts, terminology, algorithms, formulas, programming explanations, and hardware descriptions.
+
+2. **Implementation Fidelity:** Determine whether the described implementation, configurations, procedures, and technical decisions are supported by the available evidence.
+
+3. **Experimental Data Fidelity:** Verify that measurements, observations, program outputs, simulation results, and test outcomes match the supplied experimental information.
+
+4. **Programming and Algorithmic Correctness:** Where applicable, evaluate code logic, algorithm design, input/output handling, test cases, and computational reasoning.
+
+5. **Hardware and System Correctness:** Where applicable, assess circuit descriptions, hardware configurations, component usage, connections, and measured behavior.
+
+6. **Calculations and Mathematical Accuracy:** Verify formula selection, substitutions, calculations, units, numerical precision, and consistency with the supplied values.
+
+7. **Results and Analysis:** Assess whether the results are interpreted correctly and whether conclusions follow from the available evidence.
+
+8. **Error and Limitation Analysis:** Evaluate the identification and explanation of actual errors, limitations, inconsistencies, and uncertainty where relevant.
+
+9. **Completeness:** Identify missing required procedures, implementation details, results, calculations, discussions, or conclusions.
+
+10. **Academic Quality:** Evaluate clarity, technical organization, formal academic language, and adherence to the report requirements.
+
+### Evaluation Rules
+
+- Evaluate only claims and evidence available to the application.
+- Never assume that code was executed, hardware was tested, or simulations were completed without evidence.
+- Do not accept fabricated measurements, program outputs, benchmarks, test results, or experimental conclusions.
+- Distinguish actual results from expected results and theoretical predictions.
+- Do not require error propagation or physical measurement uncertainty for software-only laboratories unless the rubric requires it.
+- Apply appropriate performance metrics to the specific engineering task rather than using irrelevant metrics.
+- Identify critical technical errors separately from minor writing or formatting problems.
+- Follow the supplied rubric and any explicitly defined scoring thresholds.
+
+### Scoring Requirements
+
+Assign each applicable rubric criterion a score from 0.0 to 1.0.
+
+For every criterion:
+- Provide a score based on the available evidence.
+- Explain the reasoning behind the score.
+- Identify specific inaccuracies, omissions, or unsupported claims.
+- Indicate what needs to be corrected when a criterion does not pass.
+
+Do not invent scoring thresholds or rubric criteria.
+
+### Status Requirements
+
+Return the full evaluation schema required by the application.
+
+- `passed`: Use only when every required criterion passes.
+- `failed`: Use when any required criterion fails.
+- `inconclusive`: Use when the available information is insufficient to make a reliable evaluation.
+
+Preserve the application's existing evaluation schema, field names, and output types exactly. Do not invent additional fields.
